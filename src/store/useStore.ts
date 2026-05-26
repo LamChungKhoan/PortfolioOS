@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export type BuyEntry = {
   price: number;
@@ -58,112 +59,123 @@ const initialPositions: PortfolioPosition[] = [
   }
 ];
 
-export const useStore = create<AppState>((set) => ({
-  positions: initialPositions,
-  cashBalance: 500000000,
-  marketPrices: {
-    'FPT': 112.5,
-    'HPG': 30.1,
-    'VCB': 92,
-    'MWG': 48.5,
-    'SSI': 38.2,
-    'VNM': 66,
-    'VIC': 45,
-    'VHM': 41.5,
-    'ACB': 28.5,
-    'MBB': 24.5,
-    'TCB': 46.8,
-    'VPB': 19.5,
-    'STB': 31.2,
-    'PNJ': 112.5,
-    'VND': 22.5,
-  },
-  setCashBalance: (amount) => set({ cashBalance: amount }),
-  addPosition: (symbol) => set((state) => ({
-    positions: [...state.positions, {
-      id: Math.random().toString(36).substr(2, 9),
-      symbol: symbol.toUpperCase(),
-      buys: [{ price: 0, volume: 0 }]
-    }]
-  })),
-  updateSymbol: (id, symbol) => set((state) => ({
-    positions: state.positions.map(p => p.id === id ? { ...p, symbol: symbol.toUpperCase() } : p)
-  })),
-  removePosition: (id) => set((state) => ({
-    positions: state.positions.filter(p => p.id !== id)
-  })),
-  addBuy: (positionId) => set((state) => ({
-    positions: state.positions.map(p => 
-      p.id === positionId ? { ...p, buys: [...p.buys, { price: 0, volume: 0 }] } : p
-    )
-  })),
-  updateBuy: (positionId, buyIndex, price, volume) => set((state) => ({
-    positions: state.positions.map(p => 
-      p.id === positionId ? { 
-        ...p, 
-        buys: p.buys.map((b, i) => i === buyIndex ? { price, volume } : b) 
-      } : p
-    )
-  })),
-  removeBuy: (positionId, buyIndex) => set((state) => ({
-    positions: state.positions.map(p => 
-      p.id === positionId ? { 
-        ...p, 
-        buys: p.buys.filter((_, i) => i !== buyIndex) 
-      } : p
-    )
-  })),
-  updateDashboardInfo: (positionId, info) => set((state) => ({
-    positions: state.positions.map(p =>
-      p.id === positionId ? {
-        ...p,
-        dashboardInfo: { ...p.dashboardInfo, ...info }
-      } : p
-    )
-  })),
-  movePosition: (id, direction) => set((state) => {
-    const idx = state.positions.findIndex(p => p.id === id);
-    if (idx === -1) return {};
-    const newIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (newIdx < 0 || newIdx >= state.positions.length) return {};
-    const nextPositions = [...state.positions];
-    const temp = nextPositions[idx];
-    nextPositions[idx] = nextPositions[newIdx];
-    nextPositions[newIdx] = temp;
-    return { positions: nextPositions };
-  }),
-  toggleHighlight: (id) => set((state) => ({
-    positions: state.positions.map(p =>
-      p.id === id ? { ...p, isHighlighted: !p.isHighlighted } : p
-    )
-  })),
-  fetchLivePrices: async () => {
-    const { positions, marketPrices } = useStore.getState();
-    const symbols = Array.from(new Set(positions.map(p => p.symbol).filter(Boolean)));
-    
-    if (symbols.length === 0) return;
+export const useStore = create<AppState>()(
+  persist(
+    (set) => ({
+      positions: initialPositions,
+      cashBalance: 500000000,
+      marketPrices: {
+        'FPT': 112.5,
+        'HPG': 30.1,
+        'VCB': 92,
+        'MWG': 48.5,
+        'SSI': 38.2,
+        'VNM': 66,
+        'VIC': 45,
+        'VHM': 41.5,
+        'ACB': 28.5,
+        'MBB': 24.5,
+        'TCB': 46.8,
+        'VPB': 19.5,
+        'STB': 31.2,
+        'PNJ': 112.5,
+        'VND': 22.5,
+      },
+      setCashBalance: (amount) => set({ cashBalance: amount }),
+      addPosition: (symbol) => set((state) => ({
+        positions: [...state.positions, {
+          id: Math.random().toString(36).substr(2, 9),
+          symbol: symbol.toUpperCase(),
+          buys: [{ price: 0, volume: 0 }]
+        }]
+      })),
+      updateSymbol: (id, symbol) => set((state) => ({
+        positions: state.positions.map(p => p.id === id ? { ...p, symbol: symbol.toUpperCase() } : p)
+      })),
+      removePosition: (id) => set((state) => ({
+        positions: state.positions.filter(p => p.id !== id)
+      })),
+      addBuy: (positionId) => set((state) => ({
+        positions: state.positions.map(p => 
+          p.id === positionId ? { ...p, buys: [...p.buys, { price: 0, volume: 0 }] } : p
+        )
+      })),
+      updateBuy: (positionId, buyIndex, price, volume) => set((state) => ({
+        positions: state.positions.map(p => 
+          p.id === positionId ? { 
+            ...p, 
+            buys: p.buys.map((b, i) => i === buyIndex ? { price, volume } : b) 
+          } : p
+        )
+      })),
+      removeBuy: (positionId, buyIndex) => set((state) => ({
+        positions: state.positions.map(p => 
+          p.id === positionId ? { 
+            ...p, 
+            buys: p.buys.filter((_, i) => i !== buyIndex) 
+          } : p
+        )
+      })),
+      updateDashboardInfo: (positionId, info) => set((state) => ({
+        positions: state.positions.map(p =>
+          p.id === positionId ? {
+            ...p,
+            dashboardInfo: { ...p.dashboardInfo, ...info }
+          } : p
+        )
+      })),
+      movePosition: (id, direction) => set((state) => {
+        const idx = state.positions.findIndex(p => p.id === id);
+        if (idx === -1) return {};
+        const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (newIdx < 0 || newIdx >= state.positions.length) return {};
+        const nextPositions = [...state.positions];
+        const temp = nextPositions[idx];
+        nextPositions[idx] = nextPositions[newIdx];
+        nextPositions[newIdx] = temp;
+        return { positions: nextPositions };
+      }),
+      toggleHighlight: (id) => set((state) => ({
+        positions: state.positions.map(p =>
+          p.id === id ? { ...p, isHighlighted: !p.isHighlighted } : p
+        )
+      })),
+      fetchLivePrices: async () => {
+        const { positions, marketPrices } = useStore.getState();
+        const symbols = Array.from(new Set(positions.map(p => p.symbol).filter(Boolean)));
+        
+        if (symbols.length === 0) return;
 
-    try {
-      const newPrices = { ...marketPrices };
-      await Promise.all(symbols.map(async (symbol) => {
         try {
-          const res = await fetch(`/api/stock/${symbol}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data && data.price !== undefined) {
-              newPrices[symbol] = data.price / 1000;
+          const newPrices = { ...marketPrices };
+          await Promise.all(symbols.map(async (symbol) => {
+            try {
+              const res = await fetch(`/api/stock/${symbol}`);
+              if (res.ok) {
+                const data = await res.json();
+                if (data && data.price !== undefined) {
+                  newPrices[symbol] = data.price / 1000;
+                }
+              }
+            } catch (e) {
+              // Silent catch for individual fetch failures
             }
-          }
-        } catch (e) {
-          // Silent catch for individual fetch failures
+          }));
+          set({ marketPrices: newPrices });
+        } catch (error) {
+          console.error("Failed to fetch live prices", error);
         }
-      }));
-      set({ marketPrices: newPrices });
-    } catch (error) {
-      console.error("Failed to fetch live prices", error);
+      }
+    }),
+    {
+      name: 'portfolio-storage',
+      partialize: (state) => ({
+        positions: state.positions,
+        cashBalance: state.cashBalance,
+      }),
     }
-  }
-}));
+  )
+);
 
 export const useDerivedPortfolio = () => {
   const positions = useStore(state => state.positions);
