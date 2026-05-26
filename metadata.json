@@ -1,0 +1,6 @@
+{
+  "name": "PortfolioOS",
+  "description": "Premium stock portfolio management system combining Notion, TradingView, and Linear paradigms.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
