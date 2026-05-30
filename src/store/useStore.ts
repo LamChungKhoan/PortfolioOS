@@ -22,12 +22,27 @@ export type PortfolioPosition = {
   buys: BuyEntry[];
   dashboardInfo?: StockDashboardInfo;
   isHighlighted?: boolean;
+  tags?: string[];
+  allocationWeight?: number;
+};
+
+export type BrandSettings = {
+  appNamePrefix: string;
+  appNameSuffix: string;
+  logoIcon: string;
+  themeHue: number;
+  themeSaturation: string;
+  themeName: string;
 };
 
 type AppState = {
   positions: PortfolioPosition[];
   cashBalance: number;
   marketPrices: Record<string, number>;
+  brandSettings: BrandSettings;
+  portfolioStockWeight: number;
+  lastUpdated?: string;
+  isFetchingPrices?: boolean;
   addPosition: (symbol: string) => void;
   updateSymbol: (id: string, symbol: string) => void;
   removePosition: (id: string) => void;
@@ -39,6 +54,13 @@ type AppState = {
   fetchLivePrices: () => Promise<void>;
   movePosition: (id: string, direction: 'up' | 'down') => void;
   toggleHighlight: (id: string) => void;
+  addTag: (positionId: string, tag: string) => void;
+  removeTag: (positionId: string, tag: string) => void;
+  setTags: (positionId: string, tags: string[]) => void;
+  updateBrandSettings: (settings: Partial<BrandSettings>) => void;
+  updateAllocationWeight: (id: string, weight: number) => void;
+  setPortfolioStockWeight: (weight: number) => void;
+  updateMarketPrice: (symbol: string, price: number) => void;
 };
 
 const initialPositions: PortfolioPosition[] = [
@@ -48,14 +70,18 @@ const initialPositions: PortfolioPosition[] = [
     buys: [
       { price: 85, volume: 5000 },
       { price: 90, volume: 10000 },
-    ]
+    ],
+    tags: ['Công nghệ', 'Đầu tư dài hạn'],
+    allocationWeight: 60
   },
   {
     id: '2',
     symbol: 'HPG',
     buys: [
       { price: 28, volume: 20000 },
-    ]
+    ],
+    tags: ['Thép', 'Lướt sóng T+'],
+    allocationWeight: 40
   }
 ];
 
@@ -81,6 +107,17 @@ export const useStore = create<AppState>()(
         'PNJ': 112.5,
         'VND': 22.5,
       },
+      brandSettings: {
+        appNamePrefix: 'Portfolio',
+        appNameSuffix: 'OS',
+        logoIcon: 'LayoutDashboard',
+        themeHue: 161,
+        themeSaturation: '84%',
+        themeName: 'emerald'
+      },
+      portfolioStockWeight: 80,
+      lastUpdated: undefined,
+      isFetchingPrices: false,
       setCashBalance: (amount) => set({ cashBalance: amount }),
       addPosition: (symbol) => set((state) => ({
         positions: [...state.positions, {
@@ -140,30 +177,76 @@ export const useStore = create<AppState>()(
           p.id === id ? { ...p, isHighlighted: !p.isHighlighted } : p
         )
       })),
+      addTag: (positionId, tag) => set((state) => ({
+        positions: state.positions.map(p =>
+          p.id === positionId
+            ? { ...p, tags: Array.from(new Set([...(p.tags || []), tag.trim()])) }
+            : p
+        )
+      })),
+      removeTag: (positionId, tag) => set((state) => ({
+        positions: state.positions.map(p =>
+          p.id === positionId
+            ? { ...p, tags: (p.tags || []).filter(t => t !== tag) }
+            : p
+        )
+      })),
+      setTags: (positionId, tags) => set((state) => ({
+        positions: state.positions.map(p =>
+          p.id === positionId
+            ? { ...p, tags: tags.map(t => t.trim()).filter(Boolean) }
+            : p
+        )
+      })),
+      updateBrandSettings: (settings) => set((state) => ({
+        brandSettings: { ...state.brandSettings, ...settings }
+      })),
+      updateAllocationWeight: (id, weight) => set((state) => ({
+        positions: state.positions.map(p => p.id === id ? { ...p, allocationWeight: weight } : p)
+      })),
+      setPortfolioStockWeight: (weight) => set({ portfolioStockWeight: weight }),
+      updateMarketPrice: (symbol, price) => set((state) => ({
+        marketPrices: {
+          ...state.marketPrices,
+          [symbol.toUpperCase()]: price
+        }
+      })),
       fetchLivePrices: async () => {
         const { positions, marketPrices } = useStore.getState();
         const symbols = Array.from(new Set(positions.map(p => p.symbol).filter(Boolean)));
         
-        if (symbols.length === 0) return;
+        set({ isFetchingPrices: true });
 
         try {
           const newPrices = { ...marketPrices };
-          await Promise.all(symbols.map(async (symbol) => {
-            try {
-              const res = await fetch(`/api/stock/${symbol}`);
-              if (res.ok) {
-                const data = await res.json();
-                if (data && data.price !== undefined) {
-                  newPrices[symbol] = data.price / 1000;
+          if (symbols.length > 0) {
+            await Promise.all(symbols.map(async (symbol) => {
+              try {
+                const res = await fetch(`/api/stock/${symbol}`);
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data && data.price !== undefined) {
+                    newPrices[symbol] = data.price / 1000;
+                  }
                 }
+              } catch (e) {
+                // Silent catch for individual fetch failures
               }
-            } catch (e) {
-              // Silent catch for individual fetch failures
-            }
-          }));
-          set({ marketPrices: newPrices });
+            }));
+          }
+          
+          const now = new Date();
+          const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+          const dateStr = now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          
+          set({ 
+            marketPrices: newPrices, 
+            isFetchingPrices: false,
+            lastUpdated: `${timeStr} ${dateStr}`
+          });
         } catch (error) {
           console.error("Failed to fetch live prices", error);
+          set({ isFetchingPrices: false });
         }
       }
     }),
@@ -172,6 +255,10 @@ export const useStore = create<AppState>()(
       partialize: (state) => ({
         positions: state.positions,
         cashBalance: state.cashBalance,
+        brandSettings: state.brandSettings,
+        portfolioStockWeight: state.portfolioStockWeight,
+        lastUpdated: state.lastUpdated,
+        marketPrices: state.marketPrices,
       }),
     }
   )
@@ -210,15 +297,31 @@ export const useDerivedPortfolio = () => {
   const totalCostAll = enrichedPositions.reduce((sum, p) => sum + p.totalCost, 0);
   const totalUnrealizedPL = totalMarketValue - totalCostAll;
   
-  const finalPositions = enrichedPositions.map(pos => ({
-    ...pos,
-    weightPercent: totalNav > 0 ? (pos.marketValue / totalNav) * 100 : 0
-  }));
+  const totalWeight = positions.reduce((sum, p) => sum + (p.allocationWeight !== undefined ? p.allocationWeight : 0), 0);
+  
+  const finalPositions = enrichedPositions.map(pos => {
+    let weightPercent = 0;
+    if (totalWeight > 0) {
+      weightPercent = ((pos.allocationWeight !== undefined ? pos.allocationWeight : 0) / totalWeight) * 100;
+    } else if (positions.length > 0) {
+      weightPercent = 100 / positions.length;
+    }
+    return {
+      ...pos,
+      weightPercent
+    };
+  });
+
+  let portfolioPLPercent = 0;
+  finalPositions.forEach(p => {
+    portfolioPLPercent += (p.weightPercent / 100) * p.unrealizedPLPercent;
+  });
 
   return {
     positions: finalPositions,
     cashBalance,
     totalNav,
     totalUnrealizedPL,
+    portfolioPLPercent,
   };
 };
