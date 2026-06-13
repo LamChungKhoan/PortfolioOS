@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore, useDerivedPortfolio } from '../store/useStore';
 import { Card, Button } from './ui/core';
-import { Plus, Trash2, DollarSign, X, Activity, LayoutDashboard, Zap, ChevronUp, ChevronDown, Star, Camera, PieChart, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, DollarSign, X, Activity, LayoutDashboard, Zap, ChevronUp, ChevronDown, Star, Camera, PieChart, RefreshCw, ArrowUpDown } from 'lucide-react';
 import { clsx } from 'clsx';
 import { StockDashboardModal } from './StockDashboardModal';
 import { AllocationModal } from './AllocationModal';
@@ -60,12 +60,28 @@ export function PortfolioTable() {
   const isRedTheme = themeHue > 330 || themeHue <= 18;
   
   const [selectedTag, setSelectedTag] = useState<string>('Tất cả');
+  const [sortOrder, setSortOrder] = useState<'none' | 'desc' | 'asc'>('none');
   
   const allTags = Array.from(new Set(positions.flatMap(p => p.tags || [])));
   
   const filteredPositions = selectedTag === 'Tất cả'
     ? positions
     : positions.filter(p => p.tags?.includes(selectedTag));
+
+  const toggleSortOrder = () => {
+    setSortOrder(prev => {
+      if (prev === 'none') return 'desc';
+      if (prev === 'desc') return 'asc';
+      return 'none';
+    });
+  };
+
+  const displayPositions = [...filteredPositions];
+  if (sortOrder === 'desc') {
+    displayPositions.sort((a, b) => b.unrealizedPLPercent - a.unrealizedPLPercent);
+  } else if (sortOrder === 'asc') {
+    displayPositions.sort((a, b) => a.unrealizedPLPercent - b.unrealizedPLPercent);
+  }
 
   useEffect(() => {
     if (selectedTag !== 'Tất cả' && !allTags.includes(selectedTag)) {
@@ -86,12 +102,13 @@ export function PortfolioTable() {
   const movePosition = useStore(state => state.movePosition);
   const toggleHighlight = useStore(state => state.toggleHighlight);
   const updateMarketPrice = useStore(state => state.updateMarketPrice);
+  const boardTitle = useStore(state => state.boardTitle);
+  const setBoardTitle = useStore(state => state.setBoardTitle);
 
   const [isEditingCash, setIsEditingCash] = useState(false);
   const [cashInput, setCashInput] = useState('');
   const [activeDashboardId, setActiveDashboardId] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [boardTitle, setBoardTitle] = useState('BẢNG ĐIỀU KHIỂN');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState('');
   const [showAllocationModal, setShowAllocationModal] = useState(false);
@@ -217,11 +234,28 @@ export function PortfolioTable() {
             variant="outline" 
             size="sm" 
             className="bg-emerald-950/30 hover:bg-emerald-900/60 hover:text-emerald-300 border-emerald-500/40 tech-glow transition-all" 
-            onClick={() => fetchLivePrices()} 
+            onClick={() => fetchLivePrices(true)} 
             disabled={isFetchingPrices}
           >
             <RefreshCw className={clsx("h-4 w-4 mr-2 text-emerald-400", isFetchingPrices && "animate-spin")} />
             {isFetchingPrices ? "ĐANG TẢI GIÁ..." : "CẬP NHẬT GIÁ"}
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className={clsx(
+              "border-emerald-500/40 tech-glow transition-all",
+              sortOrder !== 'none' ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/70" : "bg-emerald-950/30 hover:bg-emerald-900/60 hover:text-emerald-300"
+            )}
+            onClick={toggleSortOrder}
+            title="Đổi chiều sắp xếp theo % Lãi/Lỗ hoặc phục hồi mặc định"
+          >
+            <ArrowUpDown className={clsx(
+              "h-4 w-4 mr-2 text-emerald-400 transition-transform duration-300",
+              sortOrder === 'desc' && "rotate-180 text-emerald-400",
+              sortOrder === 'asc' && "text-rose-450"
+            )} />
+            SẮP XẾP: {sortOrder === 'none' ? 'MẶC ĐỊNH' : sortOrder === 'desc' ? 'LÃI → LỖ' : 'LỖ → LÃI'}
           </Button>
           <Button variant="outline" size="sm" className="bg-emerald-950/30 hover:bg-emerald-900/60 hover:text-emerald-300 border-emerald-500/40 tech-glow transition-all" onClick={handleCapture} disabled={isCapturing}>
             <Camera className={clsx("h-4 w-4 mr-2 text-emerald-400", isCapturing && "animate-pulse")} />
@@ -370,13 +404,27 @@ export function PortfolioTable() {
                     <Activity className="w-3.5 h-3.5 text-zinc-400" /> GIÁ HIỆN TẠI
                   </div>
                 </th>
-                <th className="p-3 border-r border-zinc-800/60 w-44 text-right uppercase text-xs md:text-sm tracking-wider font-bold text-[#e0e0e0] min-w-[180px] whitespace-nowrap">% LÃI/LỖ</th>
+                <th 
+                  className="p-3 border-r border-zinc-800/60 w-44 text-right uppercase text-xs md:text-sm tracking-wider font-bold text-[#e0e0e0] min-w-[180px] whitespace-nowrap cursor-pointer select-none hover:text-emerald-400 hover:bg-black/40 transition-all group"
+                  onClick={toggleSortOrder}
+                  title="Nhấn để sắp xếp % Lại/Lỗ (Mặc định / Lãi → Lỗ / Lỗ → Lãi)"
+                >
+                  <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                    <span>% LÃI/LỖ</span>
+                    <ArrowUpDown className={clsx(
+                      "w-3.5 h-3.5 transition-all duration-300", 
+                      sortOrder === 'none' && "text-zinc-500 opacity-40 group-hover:opacity-100",
+                      sortOrder === 'desc' && "text-emerald-400 rotate-180 drop-shadow-[0_0_4px_rgba(52,211,153,0.5)]",
+                      sortOrder === 'asc' && "text-rose-400 drop-shadow-[0_0_4px_rgba(244,63,94,0.5)]"
+                    )} />
+                  </div>
+                </th>
                 <th className="p-3 w-16 text-center uppercase text-xs md:text-sm tracking-wider font-bold text-[#e0e0e0] min-w-[65px] whitespace-nowrap">XÓA</th>
               </tr>
             </thead>
             <motion.tbody layout className="divide-y divide-emerald-900/20">
               <AnimatePresence>
-              {filteredPositions.map((pos) => {
+              {displayPositions.map((pos) => {
                 const priceDiff = pos.currentPrice - pos.averageCost;
                 const diffVND = Math.round(priceDiff * 1000);
                 return (
@@ -421,8 +469,8 @@ export function PortfolioTable() {
                           size="sm"
                           className={clsx("h-5 w-5 p-0 border rounded disabled:opacity-20 disabled:pointer-events-none transition-all flex items-center justify-center", pos.isHighlighted ? "bg-emerald-900/40 border-emerald-500/30 text-emerald-400 hover:bg-emerald-800/60" : "bg-emerald-950/20 hover:bg-emerald-900 border-emerald-500/25 text-emerald-500 hover:text-emerald-300")}
                           onClick={() => movePosition(pos.id, 'up')}
-                          disabled={positions.indexOf(pos) === 0}
-                          title="Di chuyển lên"
+                          disabled={sortOrder !== 'none' || positions.indexOf(pos) === 0}
+                          title={sortOrder !== 'none' ? "Tắt sắp xếp để di chuyển" : "Di chuyển lên"}
                         >
                           <ChevronUp className="w-3.5 h-3.5" />
                         </Button>
@@ -431,8 +479,8 @@ export function PortfolioTable() {
                           size="sm"
                           className={clsx("h-5 w-5 p-0 border rounded disabled:opacity-20 disabled:pointer-events-none transition-all flex items-center justify-center", pos.isHighlighted ? "bg-emerald-900/40 border-emerald-500/30 text-emerald-400 hover:bg-emerald-800/60" : "bg-emerald-950/20 hover:bg-emerald-900 border-emerald-500/25 text-emerald-500 hover:text-emerald-300")}
                           onClick={() => movePosition(pos.id, 'down')}
-                          disabled={positions.indexOf(pos) === positions.length - 1}
-                          title="Di chuyển xuống"
+                          disabled={sortOrder !== 'none' || positions.indexOf(pos) === positions.length - 1}
+                          title={sortOrder !== 'none' ? "Tắt sắp xếp để di chuyển" : "Di chuyển xuống"}
                         >
                           <ChevronDown className="w-4 h-4" />
                         </Button>
@@ -605,7 +653,7 @@ export function PortfolioTable() {
             })}
               </AnimatePresence>
               
-              {filteredPositions.length === 0 && (
+              {displayPositions.length === 0 && (
                 <tr>
                   <td colSpan={maxBuys + 6} className="p-16 text-center text-slate-400 font-mono tracking-widest bg-emerald-950/5">
                     <div className="max-w-sm mx-auto space-y-4">

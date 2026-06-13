@@ -1,6 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+export function isVietnameseMarketHours(): boolean {
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const hanoiTime = new Date(utc + (3600000 * 7));
+  const hour = hanoiTime.getHours();
+  const minute = hanoiTime.getMinutes();
+  const minutesSinceMidnight = hour * 60 + minute;
+  return minutesSinceMidnight >= (9 * 60) && minutesSinceMidnight <= (14 * 60 + 45);
+}
+
+
 export type BuyEntry = {
   price: number;
   volume: number;
@@ -43,6 +54,7 @@ type AppState = {
   portfolioStockWeight: number;
   lastUpdated?: string;
   isFetchingPrices?: boolean;
+  boardTitle: string;
   addPosition: (symbol: string) => void;
   updateSymbol: (id: string, symbol: string) => void;
   removePosition: (id: string) => void;
@@ -51,7 +63,7 @@ type AppState = {
   removeBuy: (positionId: string, buyIndex: number) => void;
   setCashBalance: (amount: number) => void;
   updateDashboardInfo: (positionId: string, info: Partial<StockDashboardInfo>) => void;
-  fetchLivePrices: () => Promise<void>;
+  fetchLivePrices: (isManual?: boolean) => Promise<void>;
   movePosition: (id: string, direction: 'up' | 'down') => void;
   toggleHighlight: (id: string) => void;
   addTag: (positionId: string, tag: string) => void;
@@ -61,6 +73,7 @@ type AppState = {
   updateAllocationWeight: (id: string, weight: number) => void;
   setPortfolioStockWeight: (weight: number) => void;
   updateMarketPrice: (symbol: string, price: number) => void;
+  setBoardTitle: (title: string) => void;
 };
 
 const initialPositions: PortfolioPosition[] = [
@@ -118,6 +131,7 @@ export const useStore = create<AppState>()(
       portfolioStockWeight: 80,
       lastUpdated: undefined,
       isFetchingPrices: false,
+      boardTitle: 'BẢNG ĐIỀU KHIỂN',
       setCashBalance: (amount) => set({ cashBalance: amount }),
       addPosition: (symbol) => set((state) => ({
         positions: [...state.positions, {
@@ -211,7 +225,12 @@ export const useStore = create<AppState>()(
           [symbol.toUpperCase()]: price
         }
       })),
-      fetchLivePrices: async () => {
+      fetchLivePrices: async (isManual = false) => {
+        if (!isManual && isVietnameseMarketHours()) {
+          console.log("Skipping automated price refresh during Vietnamese market hours (09:00 - 14:45) to preserve manual edits.");
+          return;
+        }
+
         const { positions, marketPrices } = useStore.getState();
         const symbols = Array.from(new Set(positions.map(p => p.symbol).filter(Boolean)));
         
@@ -248,7 +267,8 @@ export const useStore = create<AppState>()(
           console.error("Failed to fetch live prices", error);
           set({ isFetchingPrices: false });
         }
-      }
+      },
+      setBoardTitle: (title) => set({ boardTitle: title })
     }),
     {
       name: 'portfolio-storage',
@@ -259,6 +279,7 @@ export const useStore = create<AppState>()(
         portfolioStockWeight: state.portfolioStockWeight,
         lastUpdated: state.lastUpdated,
         marketPrices: state.marketPrices,
+        boardTitle: state.boardTitle,
       }),
     }
   )
