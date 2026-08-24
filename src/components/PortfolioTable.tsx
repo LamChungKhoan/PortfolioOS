@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore, useDerivedPortfolio } from '../store/useStore';
 import { Card, Button } from './ui/core';
-import { Plus, Trash2, DollarSign, X, Activity, LayoutDashboard, Zap, ChevronUp, ChevronDown, Star, Camera, PieChart, RefreshCw, ArrowUpDown } from 'lucide-react';
+import { Plus, Trash2, X, Activity, LayoutDashboard, ChevronUp, ChevronDown, Star, Camera, PieChart, RefreshCw, ArrowUpDown, Smartphone, Monitor } from 'lucide-react';
 import { clsx } from 'clsx';
 import { StockDashboardModal } from './StockDashboardModal';
 import { AllocationModal } from './AllocationModal';
+import { ExportModal } from './ExportModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { toPng } from 'html-to-image';
 
@@ -17,8 +18,27 @@ const formatStockPrice = (val: number) => {
   }).format(val);
 };
 
-const getTagStyles = (tag: string) => {
+const getTagStyles = (tag: string, isLight: boolean) => {
   const t = tag.toLowerCase().trim();
+  if (isLight) {
+    if (t.includes('ngân hàng') || t.includes('vcb') || t.includes('acb')) {
+      return 'bg-purple-100 border-purple-300 text-purple-800';
+    }
+    if (t.includes('thép') || t.includes('hpg')) {
+      return 'bg-slate-200 border-slate-400 text-slate-800';
+    }
+    if (t.includes('bất động sản') || t.includes('bđs')) {
+      return 'bg-amber-100 border-amber-300 text-amber-900';
+    }
+    if (t.includes('công nghệ') || t.includes('fpt')) {
+      return 'bg-cyan-100 border-cyan-300 text-cyan-900';
+    }
+    if (t.includes('chứng khoán') || t.includes('vnd') || t.includes('ssi')) {
+      return 'bg-blue-100 border-blue-300 text-blue-900';
+    }
+    return 'bg-emerald-100 border-emerald-300 text-emerald-800';
+  }
+
   if (t.includes('ngân hàng') || t.includes('vcb') || t.includes('acb')) {
     return 'bg-violet-950/45 border-violet-500/40 text-violet-350';
   }
@@ -56,11 +76,21 @@ export function PortfolioTable() {
   const lastUpdated = useStore(state => state.lastUpdated);
   const isFetchingPrices = useStore(state => state.isFetchingPrices);
   const brandSettings = useStore(state => state.brandSettings);
+  const themeMode = useStore(state => state.themeMode || 'cyber');
+  const densityMode = useStore(state => state.densityMode || 'standard');
+  const setDensityMode = useStore(state => state.setDensityMode);
+
+  const isLight = themeMode === 'light';
+  const isContrast = themeMode === 'contrast';
+  const isCyber = themeMode === 'cyber';
+  const isCompact = densityMode === 'compact';
+
   const themeHue = brandSettings?.themeHue ?? 161;
   const isRedTheme = themeHue > 330 || themeHue <= 18;
   
   const [selectedTag, setSelectedTag] = useState<string>('Tất cả');
   const [sortOrder, setSortOrder] = useState<'none' | 'desc' | 'asc'>('none');
+  const [showExportModal, setShowExportModal] = useState(false);
   
   const allTags = Array.from(new Set(positions.flatMap(p => p.tags || [])));
   
@@ -123,40 +153,6 @@ export function PortfolioTable() {
     return () => clearInterval(interval);
   }, [fetchLivePrices]);
 
-  const handleCapture = async () => {
-    if (!tableRef.current) return;
-    try {
-      setIsCapturing(true);
-      // Let React render to hide the buttons (opacity change, no layout shift)
-      await new Promise(resolve => setTimeout(resolve, 50));
-      
-      const el = tableRef.current;
-      const width = el.offsetWidth;
-      const height = el.offsetHeight;
-
-      const dataUrl = await toPng(el, {
-        quality: 1,
-        pixelRatio: 2,
-        width: width + 64, // 32px horizontal padding each side
-        height: height + 80, // 48px top, 32px bottom
-        style: {
-          background: '#040d0a', // Dark greenish black
-          padding: '48px 32px 32px 32px',
-          margin: '0',
-          borderRadius: '16px',
-        }
-      });
-      const link = document.createElement('a');
-      link.download = `portfolio-snapshot-${new Date().toISOString().slice(0, 10)}.png`;
-      link.href = dataUrl;
-      link.click();
-    } catch (err) {
-      console.error('Failed to capture snapshot', err);
-    } finally {
-      setIsCapturing(false);
-    }
-  };
-
   const handleTitleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (titleInput.trim()) {
@@ -180,10 +176,10 @@ export function PortfolioTable() {
   const maxBuys = Math.max(1, ...positions.map(p => p.buys.length));
 
   return (
-    <div className="space-y-6 pb-10" ref={tableRef}>
-      <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 relative z-10" data-html2canvas-ignore={true}>
+    <div className="space-y-5 pb-10" ref={tableRef}>
+      {/* Top Banner & Control Bar */}
+      <div className="flex flex-col lg:flex-row items-start lg:items-end justify-between gap-4 relative z-10" data-html2canvas-ignore={true}>
         <div className="relative">
-          <div className="absolute -inset-4 bg-emerald-500/5 blur-xl rounded-full z-0 pointer-events-none"></div>
           {isEditingTitle ? (
             <form onSubmit={handleTitleSubmit} className="relative z-10 -ml-2 mb-1">
               <input
@@ -192,93 +188,180 @@ export function PortfolioTable() {
                 value={titleInput}
                 onChange={e => setTitleInput(e.target.value)}
                 onBlur={handleTitleSubmit}
-                className="bg-zinc-900/60 border border-zinc-700 rounded px-2 py-0.5 text-3xl font-bold font-display text-[#e0e0e0] focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-650 shadow-inner w-full min-w-[300px] max-w-md uppercase"
+                className={clsx(
+                  "border rounded px-2 py-0.5 text-2xl sm:text-3xl font-bold font-display focus:outline-none w-full min-w-[280px] max-w-md uppercase shadow-inner",
+                  isLight ? "bg-white border-slate-300 text-slate-900 focus:border-emerald-600" : "bg-zinc-900/80 border-zinc-700 text-white focus:border-emerald-500"
+                )}
                 placeholder="NHẬP TÊN BẢNG..."
               />
             </form>
           ) : (
             <div className="flex items-center gap-3 relative z-10">
               <h2 
-                className="text-3xl font-bold tracking-tight font-display text-white cursor-pointer hover:text-emerald-300 transition-colors group flex items-center" 
-                style={{ textShadow: '0 0 20px rgba(16,185,129,0.3)' }}
+                className={clsx(
+                  "text-2xl sm:text-3xl font-bold tracking-tight font-display cursor-pointer transition-colors group flex items-center",
+                  isLight && "text-slate-900 hover:text-emerald-700",
+                  isContrast && "text-white hover:text-emerald-400",
+                  isCyber && "text-white hover:text-emerald-300 drop-shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+                )}
                 onClick={() => {
-                  if(isCapturing) return;
+                  if (isCapturing) return;
                   setIsEditingTitle(true);
                   setTitleInput(boardTitle);
                 }}
-                title="Nhấn để đổi tên"
+                title="Nhấn để đổi tên bảng"
               >
                 {boardTitle}
                 {!isCapturing && (
-                  <span className="opacity-0 group-hover:opacity-100 transition-opacity ml-3 text-[10px] font-mono text-emerald-500/50 uppercase tracking-widest border border-emerald-500/20 px-1.5 py-0.5 rounded bg-emerald-950/30 whitespace-nowrap">
+                  <span className={clsx(
+                    "opacity-0 group-hover:opacity-100 transition-opacity ml-3 text-[10px] font-mono uppercase tracking-widest border px-1.5 py-0.5 rounded whitespace-nowrap",
+                    isLight ? "text-emerald-800 border-emerald-300 bg-emerald-50" : "text-emerald-400 border-emerald-500/30 bg-emerald-950/40"
+                  )}>
                     ĐỔI TÊN
                   </span>
                 )}
               </h2>
             </div>
           )}
-          <p className="text-emerald-500/70 mt-1 font-mono text-xs uppercase tracking-widest relative z-10 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="flex items-center gap-1.5 bg-emerald-950/20 border border-emerald-900/30 px-2 py-0.5 rounded text-[10px]">
-              <span className={clsx("w-1.5 h-1.5 rounded-full", isFetchingPrices ? "bg-amber-400 animate-ping" : "bg-emerald-500 animate-pulse")}></span>
+          <p className={clsx(
+            "mt-1 font-mono text-xs uppercase tracking-widest relative z-10 flex flex-wrap items-center gap-x-3 gap-y-1",
+            isLight ? "text-slate-600" : "text-emerald-500/70"
+          )}>
+            <span className={clsx(
+              "flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] border",
+              isLight ? "bg-slate-100 border-slate-200 text-slate-700" : "bg-emerald-950/20 border-emerald-900/30 text-emerald-400"
+            )}>
+              <span className={clsx("w-1.5 h-1.5 rounded-full", isFetchingPrices ? "bg-amber-500 animate-ping" : "bg-emerald-500 animate-pulse")}></span>
               <span>Theo Dõi Danh Mục Đầu Tư V1.0</span>
             </span>
             {lastUpdated && (
-              <span className="text-[10px] text-emerald-500/60 lowercase tracking-normal flex items-center gap-1 bg-black/40 border border-emerald-950/40 px-2 py-0.5 rounded font-mono">
-                cập nhật giá: <span className="text-emerald-400 font-bold tracking-widest uppercase">{lastUpdated}</span>
+              <span className={clsx(
+                "text-[10px] lowercase tracking-normal flex items-center gap-1 px-2 py-0.5 rounded font-mono border",
+                isLight ? "bg-slate-100 border-slate-200 text-slate-600" : "bg-black/40 border-emerald-950/40 text-emerald-400/80"
+              )}>
+                cập nhật giá: <span className={clsx("font-bold tracking-widest uppercase", isLight ? "text-slate-900" : "text-emerald-400")}>{lastUpdated}</span>
               </span>
             )}
           </p>
         </div>
-        <div className={clsx("flex flex-wrap gap-3 relative z-10 transition-opacity justify-end", isCapturing && "opacity-0")}>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="bg-emerald-950/30 hover:bg-emerald-900/60 hover:text-emerald-300 border-emerald-500/40 tech-glow transition-all" 
-            onClick={() => fetchLivePrices(true)} 
-            disabled={isFetchingPrices}
+
+        {/* Action Buttons Toolbar */}
+        <div className={clsx("flex flex-wrap items-center gap-2 relative z-10 transition-opacity", isCapturing && "opacity-0")}>
+          {/* Density Toggle Button */}
+          <button
+            onClick={() => setDensityMode(isCompact ? 'standard' : 'compact')}
+            className={clsx(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all border",
+              isCompact 
+                ? (isLight ? "bg-emerald-700 text-white border-emerald-800 shadow-sm" : "bg-emerald-950/90 border-emerald-400/60 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.3)]")
+                : (isLight ? "bg-white text-slate-700 border-slate-300 hover:bg-slate-100" : "bg-zinc-900/80 text-zinc-300 border-zinc-700 hover:bg-zinc-800")
+            )}
+            title="Bật chế độ thu gọn để giảm lề, các cột xếp sát nhau, dễ xem trên điện thoại và chụp ảnh"
           >
-            <RefreshCw className={clsx("h-4 w-4 mr-2 text-emerald-400", isFetchingPrices && "animate-spin")} />
-            {isFetchingPrices ? "ĐANG TẢI GIÁ..." : "CẬP NHẬT GIÁ"}
-          </Button>
+            {isCompact ? <Smartphone className="w-3.5 h-3.5 text-emerald-300" /> : <Monitor className="w-3.5 h-3.5" />}
+            <span>MẬT ĐỘ: {isCompact ? "THU GỌN" : "CHUẨN"}</span>
+          </button>
+
+          {/* Refresh prices button */}
           <Button 
             variant="outline" 
             size="sm" 
             className={clsx(
-              "border-emerald-500/40 tech-glow transition-all",
-              sortOrder !== 'none' ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/70" : "bg-emerald-950/30 hover:bg-emerald-900/60 hover:text-emerald-300"
+              "transition-all font-semibold",
+              isLight ? "bg-white text-slate-800 border-slate-300 hover:bg-slate-100" : "bg-emerald-950/30 hover:bg-emerald-900/60 hover:text-emerald-300 border-emerald-500/40"
+            )}
+            onClick={() => fetchLivePrices(true)} 
+            disabled={isFetchingPrices}
+          >
+            <RefreshCw className={clsx("h-3.5 w-3.5 mr-1.5", isFetchingPrices ? "animate-spin text-amber-500" : (isLight ? "text-emerald-700" : "text-emerald-400"))} />
+            {isFetchingPrices ? "ĐANG TẢI..." : "CẬP NHẬT GIÁ"}
+          </Button>
+
+          {/* Sorting button */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className={clsx(
+              "transition-all font-semibold",
+              sortOrder !== 'none'
+                ? (isLight ? "bg-emerald-100 text-emerald-900 border-emerald-400" : "bg-emerald-500/20 text-emerald-300 border-emerald-500/70")
+                : (isLight ? "bg-white text-slate-800 border-slate-300 hover:bg-slate-100" : "bg-emerald-950/30 hover:bg-emerald-900/60 hover:text-emerald-300 border-emerald-500/40")
             )}
             onClick={toggleSortOrder}
             title="Đổi chiều sắp xếp theo % Lãi/Lỗ hoặc phục hồi mặc định"
           >
             <ArrowUpDown className={clsx(
-              "h-4 w-4 mr-2 text-emerald-400 transition-transform duration-300",
-              sortOrder === 'desc' && "rotate-180 text-emerald-400",
-              sortOrder === 'asc' && "text-rose-450"
+              "h-3.5 w-3.5 mr-1.5 transition-transform duration-300",
+              sortOrder === 'desc' && "rotate-180 text-emerald-500",
+              sortOrder === 'asc' && "text-rose-500"
             )} />
             SẮP XẾP: {sortOrder === 'none' ? 'MẶC ĐỊNH' : sortOrder === 'desc' ? 'LÃI → LỖ' : 'LỖ → LÃI'}
           </Button>
-          <Button variant="outline" size="sm" className="bg-emerald-950/30 hover:bg-emerald-900/60 hover:text-emerald-300 border-emerald-500/40 tech-glow transition-all" onClick={handleCapture} disabled={isCapturing}>
-            <Camera className={clsx("h-4 w-4 mr-2 text-emerald-400", isCapturing && "animate-pulse")} />
-            XUẤT BÁO CÁO
-          </Button>
-          <Button variant="outline" size="sm" className="bg-emerald-950/30 hover:bg-emerald-900/60 hover:text-emerald-300 border-emerald-500/40 tech-glow transition-all" onClick={() => setShowAllocationModal(true)}>
-            <PieChart className="h-4 w-4 mr-2 text-emerald-400" />
-            BIỂU ĐỒ TÀI SẢN
+
+          {/* Export Report modal button */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className={clsx(
+              "transition-all font-bold",
+              isLight 
+                ? "bg-emerald-50 text-emerald-800 border-emerald-400 hover:bg-emerald-100 shadow-sm" 
+                : "bg-emerald-950/40 hover:bg-emerald-900/70 hover:text-emerald-200 border-emerald-500/50 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+            )}
+            onClick={() => setShowExportModal(true)}
+          >
+            <Camera className="h-3.5 w-3.5 mr-1.5 text-emerald-500" />
+            XUẤT BÁO CÁO (3X)
           </Button>
 
-          <Button size="sm" onClick={handleAddPosition} className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]">
-            <Plus className="h-4 w-4 mr-2" />
+          {/* Allocation chart modal button */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className={clsx(
+              "transition-all font-semibold",
+              isLight ? "bg-white text-slate-800 border-slate-300 hover:bg-slate-100" : "bg-emerald-950/30 hover:bg-emerald-900/60 hover:text-emerald-300 border-emerald-500/40"
+            )}
+            onClick={() => setShowAllocationModal(true)}
+          >
+            <PieChart className="h-3.5 w-3.5 mr-1.5 text-emerald-500" />
+            BIỂU ĐỒ
+          </Button>
+
+          {/* Add stock button */}
+          <Button 
+            size="sm" 
+            onClick={handleAddPosition} 
+            className={clsx(
+              "text-white shadow-md font-bold",
+              isLight ? "bg-emerald-700 hover:bg-emerald-800" : "bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]"
+            )}
+          >
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
             THÊM MÃ MỚI
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 perspective-1000">
-        <Card className="p-5 border-emerald-500/30 bg-black/40 glass-panel shadow-[0_0_15px_rgba(16,185,129,0.1)] relative overflow-hidden group hover:rotate-x-12 transition-all">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[30px] rounded-full group-hover:bg-emerald-500/20 transition-all pointer-events-none"></div>
-          <div className="text-emerald-400 text-sm mb-1 uppercase tracking-widest font-mono text-[11px] relative z-10">TỶ TRỌNG CỔ PHIẾU</div>
-          <div className="flex items-center justify-between gap-4 relative z-10 mt-1">
-            <div className="text-3xl font-bold text-white font-mono">{portfolioStockWeight}%</div>
+      {/* Metric Cards Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+        {/* Tỷ trọng cổ phiếu */}
+        <div className={clsx(
+          "p-4 rounded-xl border transition-all relative overflow-hidden",
+          isLight && "bg-white border-slate-200 shadow-sm text-slate-900",
+          isContrast && "bg-black border-zinc-800 text-white",
+          isCyber && "bg-black/40 border-emerald-500/30 glass-panel shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+        )}>
+          <div className={clsx(
+            "text-xs mb-1 uppercase tracking-widest font-mono font-bold",
+            isLight ? "text-slate-500" : "text-emerald-400"
+          )}>
+            TỶ TRỌNG CỔ PHIẾU
+          </div>
+          <div className="flex items-center justify-between gap-4 mt-1">
+            <div className={clsx("text-2xl sm:text-3xl font-bold font-mono", isLight ? "text-slate-900" : "text-white")}>
+              {portfolioStockWeight}%
+            </div>
             <div className="flex-1 max-w-[140px] flex items-center gap-2">
               <input
                 type="range"
@@ -286,7 +369,7 @@ export function PortfolioTable() {
                 max="100"
                 value={portfolioStockWeight}
                 onChange={(e) => setPortfolioStockWeight(Number(e.target.value))}
-                className="w-full accent-emerald-500 h-1 bg-zinc-800 rounded-lg cursor-pointer"
+                className="w-full accent-emerald-600 h-1.5 bg-slate-200 dark:bg-zinc-800 rounded-lg cursor-pointer"
               />
               <input
                 type="number"
@@ -297,23 +380,55 @@ export function PortfolioTable() {
                   let val = Math.min(100, Math.max(0, Number(e.target.value)));
                   setPortfolioStockWeight(val);
                 }}
-                className="w-12 bg-black/60 border border-emerald-950/60 rounded px-1 py-0.5 text-xs text-center font-mono text-emerald-400 font-bold focus:outline-none focus:border-emerald-500"
+                className={clsx(
+                  "w-12 rounded px-1 py-0.5 text-xs text-center font-mono font-bold focus:outline-none border",
+                  isLight ? "bg-slate-50 border-slate-300 text-slate-800 focus:border-emerald-600" : "bg-black/60 border-emerald-950/60 text-emerald-400 focus:border-emerald-500"
+                )}
               />
             </div>
           </div>
-        </Card>
-        <Card className="p-5 border-emerald-500/30 bg-black/40 glass-panel shadow-[0_0_15px_rgba(16,185,129,0.1)] relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[30px] rounded-full group-hover:bg-emerald-500/20 transition-all pointer-events-none"></div>
-          <div className="text-emerald-400 text-sm mb-1 uppercase tracking-widest font-mono text-[11px] relative z-10">TỶ TRỌNG TIỀN MẶT</div>
-          <div className="text-3xl font-bold text-white font-mono relative z-10 text-shadow-sm mt-1">{100 - portfolioStockWeight}%</div>
-        </Card>
-        <Card className="p-5 border-emerald-500/30 bg-black/40 glass-panel shadow-[0_0_15px_rgba(16,185,129,0.1)] relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[30px] rounded-full group-hover:bg-emerald-500/20 transition-all pointer-events-none"></div>
-          <div className="text-emerald-400 text-sm mb-1 uppercase tracking-widest font-mono text-[11px] relative z-10">% LÃI/LỖ DANH MỤC</div>
-          <div className={clsx("text-3xl font-bold font-mono relative z-10 mt-1", portfolioPLPercent >= 0 ? (isRedTheme ? "text-[#34d399] drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]" : "text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]") : "text-rose-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]")}>
+        </div>
+
+        {/* Tỷ trọng tiền mặt */}
+        <div className={clsx(
+          "p-4 rounded-xl border transition-all relative overflow-hidden",
+          isLight && "bg-white border-slate-200 shadow-sm text-slate-900",
+          isContrast && "bg-black border-zinc-800 text-white",
+          isCyber && "bg-black/40 border-emerald-500/30 glass-panel shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+        )}>
+          <div className={clsx(
+            "text-xs mb-1 uppercase tracking-widest font-mono font-bold",
+            isLight ? "text-slate-500" : "text-emerald-400"
+          )}>
+            TỶ TRỌNG TIỀN MẶT
+          </div>
+          <div className={clsx("text-2xl sm:text-3xl font-bold font-mono mt-1", isLight ? "text-slate-900" : "text-white")}>
+            {100 - portfolioStockWeight}%
+          </div>
+        </div>
+
+        {/* % Lãi Lỗ Danh Mục */}
+        <div className={clsx(
+          "p-4 rounded-xl border transition-all relative overflow-hidden",
+          isLight && "bg-white border-slate-200 shadow-sm",
+          isContrast && "bg-black border-zinc-800",
+          isCyber && "bg-black/40 border-emerald-500/30 glass-panel shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+        )}>
+          <div className={clsx(
+            "text-xs mb-1 uppercase tracking-widest font-mono font-bold",
+            isLight ? "text-slate-500" : "text-emerald-400"
+          )}>
+            % LÃI/LỖ DANH MỤC
+          </div>
+          <div className={clsx(
+            "text-2xl sm:text-3xl font-black font-mono mt-1",
+            portfolioPLPercent >= 0 
+              ? (isLight ? "text-emerald-700" : (isRedTheme ? "text-[#34d399]" : "text-emerald-400"))
+              : (isLight ? "text-rose-600" : "text-rose-400")
+          )}>
             {portfolioPLPercent > 0 ? '+' : ''}{portfolioPLPercent.toFixed(2)}%
           </div>
-        </Card>
+        </div>
       </div>
 
       {isEditingCash && (
@@ -337,20 +452,27 @@ export function PortfolioTable() {
       )}
 
       {/* COMPONENT PHÂN LOẠI DANH MỤC & NHÃN CHIẾN LƯỢC */}
-      <div className="flex flex-wrap items-center justify-between gap-4 p-4 border border-emerald-900/30 bg-[#090f0c] rounded-xl backdrop-blur-md relative overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.5)]" data-html2canvas-ignore={true}>
-        <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-emerald-500/35 to-transparent pointer-events-none" />
-        <div className="flex flex-wrap items-center gap-2 relative z-10 w-full lg:w-auto">
-          <span className="text-[11px] font-bold font-mono text-emerald-400/80 uppercase tracking-widest mr-2 flex items-center gap-1.5 whitespace-nowrap">
+      <div className={clsx(
+        "flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4 rounded-xl border transition-all",
+        isLight && "bg-white border-slate-200 shadow-sm",
+        isContrast && "bg-black border-zinc-800",
+        isCyber && "bg-[#090f0c] border-emerald-900/30 shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
+      )} data-html2canvas-ignore={true}>
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 relative z-10 w-full lg:w-auto">
+          <span className={clsx(
+            "text-[11px] font-bold font-mono uppercase tracking-widest mr-1 flex items-center gap-1.5 whitespace-nowrap",
+            isLight ? "text-slate-700" : "text-emerald-400/80"
+          )}>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
             Phân Loại Ngành & Chiến Lược:
           </span>
           <button
             onClick={() => setSelectedTag('Tất cả')}
             className={clsx(
-              "px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all duration-200 border",
+              "px-2.5 py-1 rounded-lg text-xs font-mono font-medium transition-all duration-200 border",
               selectedTag === 'Tất cả' 
-                ? "bg-emerald-500/20 border-emerald-500/70 text-emerald-300 shadow-[0_0_12px_var(--theme-emerald-500)] font-bold animate-pulse-subtle" 
-                : "bg-black/40 border-emerald-950/45 text-slate-400 hover:text-emerald-300 hover:border-emerald-500/30"
+                ? (isLight ? "bg-emerald-700 text-white border-emerald-800 font-bold shadow-sm" : "bg-emerald-500/25 border-emerald-500/70 text-emerald-300 font-bold")
+                : (isLight ? "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200" : "bg-black/40 border-emerald-950/45 text-slate-400 hover:text-emerald-300")
             )}
           >
             TẤT CẢ ({positions.length})
@@ -362,16 +484,18 @@ export function PortfolioTable() {
                 key={tag}
                 onClick={() => setSelectedTag(tag)}
                 className={clsx(
-                  "px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all duration-200 border flex items-center gap-1.5",
+                  "px-2.5 py-1 rounded-lg text-xs font-mono font-medium transition-all duration-200 border flex items-center gap-1.5",
                   selectedTag === tag 
-                    ? "bg-emerald-500/25 border-emerald-500/80 text-emerald-300 shadow-[0_0_12px_var(--theme-emerald-500)] font-bold" 
-                    : "bg-black/35 border-emerald-950/30 text-slate-400 hover:text-emerald-300 hover:bg-emerald-950/15 hover:border-emerald-500/25"
+                    ? (isLight ? "bg-emerald-100 border-emerald-400 text-emerald-900 font-bold" : "bg-emerald-500/25 border-emerald-500/80 text-emerald-300 font-bold")
+                    : (isLight ? "bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200" : "bg-black/35 border-emerald-950/30 text-slate-400 hover:text-emerald-300")
                 )}
               >
                 #{tag}
                 <span className={clsx(
                   "text-[10px] px-1.5 py-0.2 select-none rounded font-bold transition-all", 
-                  selectedTag === tag ? "bg-emerald-500/40 text-emerald-100" : "bg-emerald-950/50 text-emerald-400/75 border border-emerald-900/30"
+                  selectedTag === tag 
+                    ? (isLight ? "bg-emerald-600 text-white" : "bg-emerald-500/40 text-emerald-100") 
+                    : (isLight ? "bg-slate-200 text-slate-700" : "bg-emerald-950/50 text-emerald-400/75 border border-emerald-900/30")
                 )}>
                   {count}
                 </span>
@@ -380,277 +504,426 @@ export function PortfolioTable() {
           })}
         </div>
         
-        {/* Help label */}
-        <div className="text-[10px] font-mono text-slate-400/70 uppercase tracking-wider relative z-10 hidden lg:block select-none">
-          * ĐỂ GẮN NHÃN/PHÂN LOẠI CP: NHẤN NÚT <span className="text-emerald-400 font-bold">"CHI TIẾT"</span> Ở DÒNG CỦA CỦA CỔ PHIẾU ĐÓ
+        <div className={clsx(
+          "text-[10px] font-mono uppercase tracking-wider relative z-10 hidden lg:block select-none",
+          isLight ? "text-slate-500" : "text-slate-400/70"
+        )}>
+          * ĐỂ GẮN NHÃN: NHẤN NÚT <span className={isLight ? "text-emerald-700 font-bold" : "text-emerald-400 font-bold"}>"CHI TIẾT"</span> Ở DÒNG CỔ PHIẾU
         </div>
       </div>
 
-      <Card className="overflow-hidden border-emerald-900/40 glass-panel shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+      {/* Main Table Card */}
+      <Card className={clsx(
+        "overflow-hidden border transition-all",
+        isLight && "bg-white border-slate-200 shadow-md",
+        isContrast && "bg-black border-zinc-800",
+        isCyber && "border-emerald-900/40 glass-panel shadow-[0_0_30px_rgba(0,0,0,0.5)]"
+      )}>
         <div className="overflow-x-auto pb-4">
-          <table className="w-full text-left border-collapse text-sm">
-            <thead className="bg-black/60 text-[#e0e0e0] border-b border-zinc-800 font-sans">
+          <table className="w-full text-left border-collapse text-xs sm:text-sm">
+            <thead className={clsx(
+              "border-b font-sans uppercase font-bold tracking-wider",
+              isLight && "bg-slate-100 text-slate-700 border-slate-200",
+              isContrast && "bg-zinc-900 text-zinc-300 border-zinc-800",
+              isCyber && "bg-black/60 text-[#e0e0e0] border-zinc-800"
+            )}>
               <tr>
-                <th className="p-3 border-r border-zinc-800/60 w-44 uppercase text-xs md:text-sm tracking-wider font-bold text-[#e0e0e0] text-center flex-shrink-0 min-w-[170px] whitespace-nowrap">MÃ CP</th>
+                <th className={clsx(
+                  "border-r text-center font-bold whitespace-nowrap",
+                  isCompact ? "p-2 w-32 min-w-[125px]" : "p-3 w-44 min-w-[170px]",
+                  isLight ? "border-slate-200" : "border-zinc-800/60"
+                )}>
+                  MÃ CP
+                </th>
                 {Array.from({ length: maxBuys }).map((_, i) => (
-                  <th key={i} className="p-3 border-r border-zinc-800/60 min-w-[180px] uppercase text-xs md:text-sm tracking-wider font-bold text-[#e0e0e0] text-center bg-zinc-900/10 whitespace-nowrap">
-                    GIAO DỊCH {i + 1}
+                  <th
+                    key={i}
+                    className={clsx(
+                      "border-r text-center font-bold whitespace-nowrap",
+                      isCompact ? "p-2 min-w-[130px]" : "p-3 min-w-[170px]",
+                      isLight ? "border-slate-200 bg-slate-50/60" : "border-zinc-800/60 bg-zinc-900/10"
+                    )}
+                  >
+                    MUA {i + 1}
                   </th>
                 ))}
-                <th className="p-3 border-r border-zinc-800/60 w-24 text-center uppercase text-xs md:text-sm tracking-wider font-bold text-[#e0e0e0] min-w-[85px] whitespace-nowrap">THÊM</th>
-                <th className="p-3 border-r border-zinc-800/60 w-44 text-right uppercase text-xs md:text-sm tracking-wider font-bold text-[#e0e0e0] min-w-[170px] whitespace-nowrap">GIÁ VỐN TRUNG BÌNH</th>
-                <th className="p-3 border-r border-zinc-800/60 w-40 text-right uppercase text-xs md:text-sm tracking-wider font-bold text-[#e0e0e0] min-w-[150px]">
-                  <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-                    <Activity className="w-3.5 h-3.5 text-zinc-400" /> GIÁ HIỆN TẠI
+                <th className={clsx(
+                  "border-r text-center font-bold whitespace-nowrap",
+                  isCompact ? "p-2 w-16 min-w-[60px]" : "p-3 w-24 min-w-[85px]",
+                  isLight ? "border-slate-200" : "border-zinc-800/60"
+                )}>
+                  THÊM
+                </th>
+                <th className={clsx(
+                  "border-r text-right font-bold whitespace-nowrap",
+                  isCompact ? "p-2 w-36 min-w-[130px]" : "p-3 w-44 min-w-[170px]",
+                  isLight ? "border-slate-200" : "border-zinc-800/60"
+                )}>
+                  GIÁ VỐN TB
+                </th>
+                <th className={clsx(
+                  "border-r text-right font-bold whitespace-nowrap",
+                  isCompact ? "p-2 w-36 min-w-[130px]" : "p-3 w-40 min-w-[150px]",
+                  isLight ? "border-slate-200" : "border-zinc-800/60"
+                )}>
+                  <div className="flex items-center justify-end gap-1.5">
+                    <Activity className={clsx("w-3.5 h-3.5", isLight ? "text-slate-500" : "text-zinc-400")} /> 
+                    GIÁ HIỆN TẠI
                   </div>
                 </th>
                 <th 
-                  className="p-3 border-r border-zinc-800/60 w-44 text-right uppercase text-xs md:text-sm tracking-wider font-bold text-[#e0e0e0] min-w-[180px] whitespace-nowrap cursor-pointer select-none hover:text-emerald-400 hover:bg-black/40 transition-all group"
+                  className={clsx(
+                    "border-r text-right font-bold whitespace-nowrap cursor-pointer select-none transition-all group",
+                    isCompact ? "p-2 w-36 min-w-[130px]" : "p-3 w-44 min-w-[170px]",
+                    isLight ? "border-slate-200 hover:bg-slate-200/60 text-slate-800 hover:text-emerald-800" : "border-zinc-800/60 hover:bg-black/40 hover:text-emerald-400"
+                  )}
                   onClick={toggleSortOrder}
-                  title="Nhấn để sắp xếp % Lại/Lỗ (Mặc định / Lãi → Lỗ / Lỗ → Lãi)"
+                  title="Nhấn để sắp xếp % Lãi/Lỗ"
                 >
-                  <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                  <div className="flex items-center justify-end gap-1.5">
                     <span>% LÃI/LỖ</span>
                     <ArrowUpDown className={clsx(
                       "w-3.5 h-3.5 transition-all duration-300", 
-                      sortOrder === 'none' && "text-zinc-500 opacity-40 group-hover:opacity-100",
-                      sortOrder === 'desc' && "text-emerald-400 rotate-180 drop-shadow-[0_0_4px_rgba(52,211,153,0.5)]",
-                      sortOrder === 'asc' && "text-rose-400 drop-shadow-[0_0_4px_rgba(244,63,94,0.5)]"
+                      sortOrder === 'none' && "text-zinc-400 opacity-40 group-hover:opacity-100",
+                      sortOrder === 'desc' && "text-emerald-500 rotate-180",
+                      sortOrder === 'asc' && "text-rose-500"
                     )} />
                   </div>
                 </th>
-                <th className="p-3 w-16 text-center uppercase text-xs md:text-sm tracking-wider font-bold text-[#e0e0e0] min-w-[65px] whitespace-nowrap">XÓA</th>
+                <th className={clsx(
+                  "text-center font-bold whitespace-nowrap",
+                  isCompact ? "p-2 w-12 min-w-[45px]" : "p-3 w-16 min-w-[65px]"
+                )}>
+                  XÓA
+                </th>
               </tr>
             </thead>
-            <motion.tbody layout className="divide-y divide-emerald-900/20">
+            <motion.tbody layout className={clsx(
+              "divide-y font-mono",
+              isLight && "divide-slate-200",
+              isContrast && "divide-zinc-800",
+              isCyber && "divide-emerald-900/20"
+            )}>
               <AnimatePresence>
-              {displayPositions.map((pos) => {
-                const priceDiff = pos.currentPrice - pos.averageCost;
-                const diffVND = Math.round(priceDiff * 1000);
-                return (
-                  <motion.tr 
-                  layout
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ 
-                    opacity: 1, 
-                    x: 0,
-                    transition: { duration: 0.2 }
-                  }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  whileHover={{ scale: 1.005, zIndex: 10, position: "relative" }}
-                  key={pos.id} 
-                  className={clsx(
-                    "transition-all duration-500",
-                    pos.isHighlighted 
-                      ? "bg-emerald-400/5 relative z-10 border-y border-emerald-400/30 shadow-[inset_0_0_20px_rgba(52,211,153,0.1),_0_0_15px_rgba(52,211,153,0.1)] outline outline-1 outline-emerald-400/20" 
-                      : "hover:bg-emerald-900/10"
-                  )}
-                >
-                  <td className={clsx("p-3 border-r align-top transition-colors duration-500", pos.isHighlighted ? "border-emerald-400/30" : "border-emerald-900/30")}>
-                    <div className="flex gap-2">
-                      {/* Controls */}
-                      <div className="flex flex-col gap-1 justify-center pt-1.5">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className={clsx(
-                            "h-5 w-5 p-0 border rounded disabled:opacity-20 disabled:pointer-events-none transition-all flex items-center justify-center",
-                            pos.isHighlighted
-                              ? "bg-emerald-900/60 border-emerald-400/50 text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.3)] hover:bg-emerald-800/60"
-                              : "bg-emerald-950/20 hover:bg-emerald-900 border-emerald-500/25 text-emerald-500/50 hover:text-emerald-400"
-                          )}
-                          onClick={() => toggleHighlight(pos.id)}
-                          title="Đánh dấu nổi bật"
-                        >
-                          <Star className={clsx("w-3 h-3 transition-all", pos.isHighlighted && "fill-emerald-400 text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.8)] animate-pulse")} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className={clsx("h-5 w-5 p-0 border rounded disabled:opacity-20 disabled:pointer-events-none transition-all flex items-center justify-center", pos.isHighlighted ? "bg-emerald-900/40 border-emerald-500/30 text-emerald-400 hover:bg-emerald-800/60" : "bg-emerald-950/20 hover:bg-emerald-900 border-emerald-500/25 text-emerald-500 hover:text-emerald-300")}
-                          onClick={() => movePosition(pos.id, 'up')}
-                          disabled={sortOrder !== 'none' || positions.indexOf(pos) === 0}
-                          title={sortOrder !== 'none' ? "Tắt sắp xếp để di chuyển" : "Di chuyển lên"}
-                        >
-                          <ChevronUp className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className={clsx("h-5 w-5 p-0 border rounded disabled:opacity-20 disabled:pointer-events-none transition-all flex items-center justify-center", pos.isHighlighted ? "bg-emerald-900/40 border-emerald-500/30 text-emerald-400 hover:bg-emerald-800/60" : "bg-emerald-950/20 hover:bg-emerald-900 border-emerald-500/25 text-emerald-500 hover:text-emerald-300")}
-                          onClick={() => movePosition(pos.id, 'down')}
-                          disabled={sortOrder !== 'none' || positions.indexOf(pos) === positions.length - 1}
-                          title={sortOrder !== 'none' ? "Tắt sắp xếp để di chuyển" : "Di chuyển xuống"}
-                        >
-                          <ChevronDown className="w-4 h-4" />
-                        </Button>
-                      </div>
+                {displayPositions.map((pos) => {
+                  const priceDiff = pos.currentPrice - pos.averageCost;
+                  const diffVND = Math.round(priceDiff * 1000);
+                  const isProfit = pos.unrealizedPLPercent >= 0;
 
-                      <div className="flex flex-col gap-2 flex-1">
-                        <input
-                          type="text"
-                          className="w-full bg-black/60 border border-zinc-800 focus:border-zinc-655 rounded px-3 py-2 focus:outline-none text-[#e0e0e0] font-extrabold uppercase text-center transition-colors shadow-inner font-mono text-base md:text-lg lg:text-xl tracking-wide placeholder:opacity-50"
-                          value={pos.symbol}
-                          placeholder="MÃ CP"
-                          onChange={(e) => updateSymbol(pos.id, e.target.value)}
-                        />
-                        {pos.symbol && (
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="w-full h-7 text-[10px] bg-emerald-950/30 hover:bg-emerald-900/60 hover:text-emerald-300 border-emerald-500/40 tech-glow transition-all font-mono tracking-wider"
-                            onClick={() => setActiveDashboardId(pos.id)}
+                  return (
+                    <motion.tr 
+                      layout
+                      initial={{ opacity: 0, x: -15 }}
+                      animate={{ opacity: 1, x: 0, transition: { duration: 0.2 } }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      key={pos.id} 
+                      className={clsx(
+                        "transition-all duration-300",
+                        pos.isHighlighted && (
+                          isLight 
+                            ? "bg-emerald-50/80 border-y border-emerald-300" 
+                            : "bg-emerald-400/5 relative z-10 border-y border-emerald-400/30 shadow-[inset_0_0_20px_rgba(52,211,153,0.1)]"
+                        ),
+                        !pos.isHighlighted && (
+                          isLight ? "hover:bg-slate-50" : "hover:bg-emerald-900/10"
+                        )
+                      )}
+                    >
+                      {/* Column 1: Mã CP */}
+                      <td className={clsx(
+                        "border-r align-top transition-colors duration-300",
+                        isCompact ? "p-1.5" : "p-3",
+                        isLight ? "border-slate-200" : (pos.isHighlighted ? "border-emerald-400/30" : "border-emerald-900/30")
+                      )}>
+                        <div className="flex gap-1.5 items-start">
+                          {/* Ordering / Highlight controls */}
+                          <div className="flex flex-col gap-0.5 justify-center pt-0.5">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={clsx(
+                                "h-4 w-4 sm:h-5 sm:w-5 p-0 border rounded disabled:opacity-20 disabled:pointer-events-none transition-all flex items-center justify-center",
+                                pos.isHighlighted
+                                  ? (isLight ? "bg-amber-100 border-amber-400 text-amber-600" : "bg-emerald-900/60 border-emerald-400/50 text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.3)]")
+                                  : (isLight ? "bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-400 hover:text-amber-500" : "bg-emerald-950/20 hover:bg-emerald-900 border-emerald-500/25 text-emerald-500/50 hover:text-emerald-400")
+                              )}
+                              onClick={() => toggleHighlight(pos.id)}
+                              title="Đánh dấu nổi bật"
+                            >
+                              <Star className={clsx("w-2.5 h-2.5 sm:w-3 sm:h-3 transition-all", pos.isHighlighted && "fill-amber-400 text-amber-500")} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={clsx(
+                                "h-4 w-4 sm:h-5 sm:w-5 p-0 border rounded disabled:opacity-20 disabled:pointer-events-none transition-all flex items-center justify-center",
+                                isLight ? "bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-600" : "bg-emerald-950/20 hover:bg-emerald-900 border-emerald-500/25 text-emerald-500 hover:text-emerald-300"
+                              )}
+                              onClick={() => movePosition(pos.id, 'up')}
+                              disabled={sortOrder !== 'none' || positions.indexOf(pos) === 0}
+                              title={sortOrder !== 'none' ? "Tắt sắp xếp để di chuyển" : "Di chuyển lên"}
+                            >
+                              <ChevronUp className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={clsx(
+                                "h-4 w-4 sm:h-5 sm:w-5 p-0 border rounded disabled:opacity-20 disabled:pointer-events-none transition-all flex items-center justify-center",
+                                isLight ? "bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-600" : "bg-emerald-950/20 hover:bg-emerald-900 border-emerald-500/25 text-emerald-500 hover:text-emerald-300"
+                              )}
+                              onClick={() => movePosition(pos.id, 'down')}
+                              disabled={sortOrder !== 'none' || positions.indexOf(pos) === positions.length - 1}
+                              title={sortOrder !== 'none' ? "Tắt sắp xếp để di chuyển" : "Di chuyển xuống"}
+                            >
+                              <ChevronDown className="w-3 h-3" />
+                            </Button>
+                          </div>
+
+                          <div className="flex flex-col gap-1 flex-1 min-w-0">
+                            <input
+                              type="text"
+                              className={clsx(
+                                "w-full rounded font-extrabold uppercase text-center transition-colors shadow-inner font-mono tracking-wide placeholder:opacity-40 border",
+                                isCompact ? "px-1.5 py-1 text-sm sm:text-base h-8" : "px-3 py-2 text-base md:text-lg lg:text-xl",
+                                isLight ? "bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-emerald-600" : "bg-black/60 border-zinc-800 text-white focus:border-zinc-600"
+                              )}
+                              value={pos.symbol}
+                              placeholder="MÃ CP"
+                              onChange={(e) => updateSymbol(pos.id, e.target.value)}
+                            />
+                            {pos.symbol && (
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className={clsx(
+                                  "w-full text-[10px] transition-all font-mono tracking-wider",
+                                  isCompact ? "h-6 px-1" : "h-7",
+                                  isLight ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300" : "bg-emerald-950/30 hover:bg-emerald-900/60 hover:text-emerald-300 border-emerald-500/40"
+                                )}
+                                onClick={() => setActiveDashboardId(pos.id)}
+                              >
+                                <LayoutDashboard className="w-2.5 h-2.5 mr-1" />
+                                CHI TIẾT
+                              </Button>
+                            )}
+                            {pos.symbol && (pos.tags || []).length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-0.5 justify-center max-w-full">
+                                {pos.tags?.map(t => (
+                                  <span 
+                                    key={t} 
+                                    className={`${getTagStyles(t, isLight)} text-[10px] px-1.5 py-0.2 rounded border font-mono font-semibold tracking-tight whitespace-nowrap`}
+                                    title={`Nhãn: ${t}`}
+                                  >
+                                    {t}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      
+                      {/* Buy columns */}
+                      {Array.from({ length: maxBuys }).map((_, i) => {
+                        const buy = pos.buys[i];
+                        return (
+                          <td 
+                            key={i} 
+                            className={clsx(
+                              "border-r align-top relative group transition-colors duration-300",
+                              isCompact ? "p-1.5" : "p-2",
+                              isLight ? "border-slate-200 bg-slate-50/30" : "border-emerald-900/30 bg-emerald-950/10 hover:bg-emerald-900/20"
+                            )}
                           >
-                            <LayoutDashboard className="w-3 h-3 mr-1" />
-                            CHI TIẾT
+                            {buy !== undefined ? (
+                              <div className="relative z-10 w-full pt-0.5">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  className={clsx(
+                                    "w-full rounded text-center transition-colors font-mono font-bold border shadow-inner",
+                                    isCompact ? "px-1.5 py-1 text-sm sm:text-base h-8" : "px-3 py-2 text-base md:text-lg lg:text-xl",
+                                    isLight ? "bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-emerald-600" : "bg-black/60 border-zinc-800 text-white focus:border-zinc-600"
+                                  )}
+                                  value={buy.price || ''}
+                                  placeholder="0.00"
+                                  onChange={(e) => updateBuy(pos.id, i, Number(e.target.value), buy.volume || 1000)}
+                                />
+                                {pos.buys.length > 1 && (
+                                  <button 
+                                    onClick={() => removeBuy(pos.id, i)}
+                                    className="absolute -top-1.5 -right-1.5 opacity-0 group-hover:opacity-100 text-rose-500 bg-white dark:bg-black/90 rounded-full p-0.5 border border-rose-300 dark:border-rose-500/50 hover:bg-rose-100 transition-all z-20 shadow-sm"
+                                    title="Xóa giao dịch"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div className={clsx(
+                                "mt-0.5 flex items-center justify-center opacity-30 italic text-xs border border-dashed rounded font-mono uppercase tracking-wider",
+                                isCompact ? "h-8" : "h-[46px]",
+                                isLight ? "border-slate-300 text-slate-500" : "border-emerald-900/40 text-slate-400"
+                              )}>
+                                -
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                      
+                      {/* Add buy button */}
+                      <td className={clsx(
+                        "border-r text-center align-top transition-colors duration-300",
+                        isCompact ? "p-1.5 pt-2" : "p-3 pt-4",
+                        isLight ? "border-slate-200" : "border-emerald-900/30"
+                      )}>
+                        {pos.buys.length < 3 && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className={clsx(
+                              "p-0 rounded-full mx-auto transition-all border",
+                              isCompact ? "h-7 w-7" : "h-8 w-8",
+                              isLight ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300" : "bg-emerald-950/40 hover:bg-emerald-900 text-emerald-400 border-emerald-500/30"
+                            )}
+                            onClick={() => addBuy(pos.id)}
+                            title="Thêm lần mua"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
                           </Button>
                         )}
-                        {pos.symbol && (pos.tags || []).length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1.5 justify-center max-w-full">
-                            {pos.tags?.map(t => (
-                              <span 
-                                key={t} 
-                                className={`${getTagStyles(t)} text-[11px] md:text-xs px-2 py-0.5 rounded border font-mono font-semibold tracking-tight whitespace-nowrap`}
-                                title={`Nhãn: ${t}`}
-                              >
-                                {t}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  
-                  {Array.from({ length: maxBuys }).map((_, i) => {
-                    const buy = pos.buys[i];
-                    return (
-                      <td key={i} className={clsx("p-2 border-r align-top relative group transition-colors duration-500", pos.isHighlighted ? "bg-transparent border-emerald-400/30" : "bg-emerald-950/10 hover:bg-emerald-900/20 border-emerald-900/30")}>
-                        {buy !== undefined ? (
-                          <div className="relative z-10 w-full pt-1">
+                      </td>
+
+                      {/* Avg Cost */}
+                      <td className={clsx(
+                        "border-r text-right align-top whitespace-nowrap transition-colors duration-300",
+                        isCompact ? "p-1.5 pt-2" : "p-3 pt-3",
+                        isLight ? "border-slate-200" : "border-emerald-900/30"
+                      )}>
+                        <div className={clsx(
+                          "font-bold font-mono",
+                          isCompact ? "text-sm sm:text-base" : "text-base md:text-lg lg:text-xl",
+                          isLight ? "text-slate-900" : "text-emerald-50"
+                        )}>
+                          {formatStockPrice(pos.averageCost)}
+                        </div>
+                        <div className={clsx(
+                          "text-[10px] sm:text-[11px] font-mono font-medium tracking-tight",
+                          isLight ? "text-slate-500" : "text-zinc-400/80"
+                        )}>
+                          ~ {formatCurrency(Math.round(pos.averageCost * 1000))} đ
+                        </div>
+                      </td>
+
+                      {/* Current Price */}
+                      <td className={clsx(
+                        "border-r text-right align-top transition-colors duration-300",
+                        isCompact ? "p-1.5 pt-1.5" : "p-3 pt-2",
+                        isLight ? "border-slate-200" : "border-emerald-900/30"
+                      )}>
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex items-center justify-end gap-1 whitespace-nowrap w-full">
+                            <div className={clsx(
+                              "w-2 h-2 rounded-full animate-pulse shrink-0", 
+                              isProfit 
+                                ? (isLight ? "bg-emerald-600" : "bg-emerald-500") 
+                                : "bg-rose-500"
+                            )} />
                             <input
                               type="number"
                               step="any"
-                              className="w-full bg-black/60 border border-zinc-800 rounded px-3 py-2 text-[#e0e0e0] focus:outline-none focus:border-zinc-600 shadow-inner transition-colors font-mono text-center text-base md:text-lg lg:text-xl font-bold"
-                              value={buy.price || ''}
-                              placeholder="Nhập giá..."
-                              onChange={(e) => updateBuy(pos.id, i, Number(e.target.value), buy.volume || 1000)}
+                              className={clsx(
+                                "rounded text-right font-extrabold font-mono transition-all focus:outline-none border shadow-inner",
+                                isCompact ? "w-24 sm:w-28 px-1.5 py-0.5 text-sm sm:text-base h-8" : "w-28 px-2 py-1 text-base md:text-lg",
+                                isLight 
+                                  ? (isProfit ? "bg-emerald-50/50 border-emerald-300 text-emerald-800 focus:bg-white" : "bg-rose-50/50 border-rose-300 text-rose-700 focus:bg-white")
+                                  : (isProfit ? "bg-black/60 border-zinc-800 text-emerald-400 focus:border-zinc-700" : "bg-black/60 border-zinc-800 text-rose-400 focus:border-zinc-700")
+                              )}
+                              value={pos.currentPrice || ''}
+                              placeholder="0"
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                updateMarketPrice(pos.symbol || '', val);
+                              }}
                             />
-                            {pos.buys.length > 1 && (
-                              <button 
-                                onClick={() => removeBuy(pos.id, i)}
-                                className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 text-rose-400 bg-black/80 rounded-full p-0.5 border border-rose-500/50 hover:bg-rose-500/30 hover:text-rose-300 transition-all z-20 tech-glow shadow-md"
-                                title="Xóa giao dịch"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
+                          </div>
+                          <div className={clsx(
+                            "text-[10px] sm:text-[11px] font-mono font-medium tracking-tight",
+                            isLight ? "text-slate-600" : "text-zinc-400/80"
+                          )}>
+                            {priceDiff > 0 ? (
+                              <span className={isLight ? "text-emerald-700" : "text-emerald-400"}>
+                                +{formatCurrency(diffVND)} đ
+                              </span>
+                            ) : priceDiff < 0 ? (
+                              <span className={isLight ? "text-rose-600" : "text-rose-400"}>
+                                {formatCurrency(diffVND)} đ
+                              </span>
+                            ) : (
+                              <span className="text-zinc-500">0 đ</span>
                             )}
                           </div>
-                        ) : (
-                          <div className="h-[46px] mt-1 flex items-center justify-center opacity-30 italic text-xs text-slate-400 border border-dashed border-emerald-900/40 rounded font-mono uppercase tracking-wider">
-                            TRỐNG
-                          </div>
-                        )}
+                        </div>
                       </td>
-                    );
-                  })}
-                  
-                  <td className={clsx("p-3 border-r text-center align-top pt-5 transition-colors duration-500", pos.isHighlighted ? "border-emerald-400/30" : "border-emerald-900/30")}>
-                    {pos.buys.length < 3 && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="h-8 w-8 p-0 rounded-full bg-emerald-950/40 hover:bg-emerald-900 hover:text-emerald-300 text-emerald-500 border border-emerald-500/30 mx-auto transition-all tech-glow" 
-                        onClick={() => addBuy(pos.id)}
-                        title="Thêm lần mua"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </td>
 
-                  <td className={clsx("p-3 border-r text-right align-top pt-4 whitespace-nowrap transition-colors duration-500", pos.isHighlighted ? "bg-emerald-400/5 border-emerald-400/30" : "bg-emerald-950/20 border-emerald-900/30")}>
-                    <div className="text-base md:text-lg lg:text-xl font-bold font-mono text-emerald-50">
-                      {formatStockPrice(pos.averageCost)}
-                    </div>
-                    <div className="text-[11px] mt-1 font-mono text-zinc-400/80 font-medium tracking-tight">
-                      ~ {formatCurrency(Math.round(pos.averageCost * 1000))} VNĐ
-                    </div>
-                  </td>
-                  <td className={clsx("p-3 border-r text-right align-top pt-4 transition-colors duration-500", pos.isHighlighted ? "border-emerald-400/30" : "border-emerald-900/30")}>
-                    <div className="flex flex-col items-end gap-1">
-                      <div className="flex items-center justify-end gap-1.5 whitespace-nowrap w-full">
-                        <div className={clsx("w-2 h-2 rounded-full animate-pulse shadow-[0_0_8px_currentColor] shrink-0", pos.unrealizedPL >= 0 ? (isRedTheme ? "bg-[#10b981] text-[#10b981]" : "bg-emerald-500 text-emerald-500") : "bg-rose-500 text-rose-500")}></div>
-                        <input
-                          type="number"
-                          step="any"
-                          className={clsx(
-                            "w-28 bg-black/60 border border-zinc-800/80 focus:border-zinc-700/80 rounded px-2 py-1 text-right font-extrabold font-mono text-base md:text-lg transition-all focus:outline-none focus:ring-1 focus:ring-emerald-500/20",
-                            pos.unrealizedPL >= 0 ? (isRedTheme ? "text-[#34d399]" : "text-emerald-400") : "text-rose-400"
-                          )}
-                          value={pos.currentPrice || ''}
-                          placeholder="0"
-                          onChange={(e) => {
-                            const val = e.target.value === '' ? 0 : Number(e.target.value);
-                            updateMarketPrice(pos.symbol || '', val);
-                          }}
-                        />
-                      </div>
-                      <div className="text-[11px] font-mono text-zinc-400/80 font-medium tracking-tight">
-                        {priceDiff > 0 ? (
-                          <span className={isRedTheme ? "text-[#34d399]/85" : "text-emerald-400/85"}>
-                            +{formatCurrency(diffVND)} VNĐ/CP
-                          </span>
-                        ) : priceDiff < 0 ? (
-                          <span className="text-rose-400/85">
-                            {formatCurrency(diffVND)} VNĐ/CP
-                          </span>
-                        ) : (
-                          <span className="text-zinc-500/70">
-                            0 VNĐ (bằng giá vốn)
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className={clsx("p-3 border-r text-right align-top pt-4 transition-colors duration-500", pos.isHighlighted ? "border-emerald-400/30" : "border-emerald-900/30")}>
-                    <div className={clsx("font-extrabold text-base md:text-lg lg:text-xl font-mono drop-shadow-[0_0_5px_currentColor] whitespace-nowrap", pos.unrealizedPLPercent >= 0 ? (isRedTheme ? "text-[#34d399]" : "text-emerald-400") : "text-rose-400")}>
-                      {pos.unrealizedPLPercent > 0 ? '+' : ''}{pos.unrealizedPLPercent.toFixed(2)}%
-                    </div>
-                    <div className="mt-1 flex items-center justify-end">
-                      {pos.unrealizedPLPercent > 0 ? (
-                        <span className={clsx("inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-sans font-extrabold tracking-wider border whitespace-nowrap select-none", 
-                          isRedTheme 
-                            ? "bg-emerald-500/10 border-emerald-500/20 text-[#34d399]" 
-                            : "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
+                      {/* % Lãi / Lỗ */}
+                      <td className={clsx(
+                        "border-r text-right align-top whitespace-nowrap transition-colors duration-300",
+                        isCompact ? "p-1.5 pt-2" : "p-3 pt-3",
+                        isLight ? "border-slate-200" : "border-emerald-900/30"
+                      )}>
+                        <div className={clsx(
+                          "font-extrabold font-mono",
+                          isCompact ? "text-sm sm:text-base" : "text-base md:text-lg lg:text-xl",
+                          isProfit 
+                            ? (isLight ? "text-emerald-700" : "text-emerald-400") 
+                            : (isLight ? "text-rose-600" : "text-rose-400")
                         )}>
-                          <span className="text-[9px]">▲</span> LÃI
-                        </span>
-                      ) : pos.unrealizedPLPercent < 0 ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-sans font-extrabold tracking-wider bg-rose-500/10 border border-rose-500/25 text-rose-400 whitespace-nowrap select-none">
-                          <span className="text-[9px]">▼</span> LỖ
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-sans font-extrabold tracking-wider bg-zinc-800/40 border border-zinc-700/40 text-zinc-400 whitespace-nowrap select-none">
-                          🟰 HOÀ VỐN
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-3 text-center align-top pt-4">
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="h-8 w-8 p-0 text-slate-500 hover:text-rose-400 hover:bg-rose-950/50 mx-auto border hover:border-rose-500/30 border-transparent transition-all" 
-                      onClick={() => removePosition(pos.id)}
-                      title="Xóa mã"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </td>
-                </motion.tr>
-              );
-            })}
+                          {pos.unrealizedPLPercent > 0 ? '+' : ''}{pos.unrealizedPLPercent.toFixed(2)}%
+                        </div>
+                        <div className="mt-0.5 flex items-center justify-end">
+                          {isProfit ? (
+                            <span className={clsx(
+                              "inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-sans font-extrabold tracking-wider border select-none",
+                              isLight ? "bg-emerald-100 border-emerald-300 text-emerald-800" : "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
+                            )}>
+                              ▲ LÃI
+                            </span>
+                          ) : (
+                            <span className={clsx(
+                              "inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-sans font-extrabold tracking-wider border select-none",
+                              isLight ? "bg-rose-100 border-rose-300 text-rose-800" : "bg-rose-500/10 border-rose-500/25 text-rose-400"
+                            )}>
+                              ▼ LỖ
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Delete button */}
+                      <td className={clsx(
+                        "text-center align-top",
+                        isCompact ? "p-1.5 pt-2" : "p-3 pt-3"
+                      )}>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className={clsx(
+                            "p-0 mx-auto border transition-all",
+                            isCompact ? "h-7 w-7" : "h-8 w-8",
+                            isLight ? "text-slate-400 hover:text-rose-600 hover:bg-rose-50 border-transparent hover:border-rose-200" : "text-slate-500 hover:text-rose-400 hover:bg-rose-950/50 border-transparent hover:border-rose-500/30"
+                          )}
+                          onClick={() => removePosition(pos.id)}
+                          title="Xóa mã này"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
               </AnimatePresence>
               
               {displayPositions.length === 0 && (
@@ -663,12 +936,12 @@ export function PortfolioTable() {
                           : "Không có mã nào kết nối với nhãn được chọn."}
                       </p>
                       {positions.length === 0 ? (
-                        <Button onClick={handleAddPosition} className="bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/50 text-white transition-all tech-glow uppercase text-[11px] px-8 py-4">
+                        <Button onClick={handleAddPosition} className="bg-emerald-600 hover:bg-emerald-700 text-white uppercase text-xs px-6 py-2.5">
                           <Plus className="h-4 w-4 mr-2" />
                           THÊM MÃ ĐẦU TIÊN
                         </Button>
                       ) : (
-                        <Button onClick={() => setSelectedTag('Tất cả')} className="bg-emerald-650/40 hover:bg-emerald-600 border border-emerald-500/55 text-white transition-all tech-glow uppercase text-[11px] px-6 py-2">
+                        <Button onClick={() => setSelectedTag('Tất cả')} className="bg-emerald-600 hover:bg-emerald-700 text-white uppercase text-xs px-6 py-2">
                           Xem toàn bộ danh mục
                         </Button>
                       )}
@@ -681,6 +954,7 @@ export function PortfolioTable() {
         </div>
       </Card>
       
+      {/* Modal Dialogs */}
       <StockDashboardModal 
         positionId={activeDashboardId} 
         onClose={() => setActiveDashboardId(null)}
@@ -689,6 +963,11 @@ export function PortfolioTable() {
       <AllocationModal 
         isOpen={showAllocationModal}
         onClose={() => setShowAllocationModal(false)}
+      />
+
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
       />
     </div>
   );

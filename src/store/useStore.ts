@@ -55,6 +55,8 @@ type AppState = {
   lastUpdated?: string;
   isFetchingPrices?: boolean;
   boardTitle: string;
+  themeMode: 'cyber' | 'light' | 'contrast';
+  densityMode: 'standard' | 'compact';
   addPosition: (symbol: string) => void;
   updateSymbol: (id: string, symbol: string) => void;
   removePosition: (id: string) => void;
@@ -74,6 +76,8 @@ type AppState = {
   setPortfolioStockWeight: (weight: number) => void;
   updateMarketPrice: (symbol: string, price: number) => void;
   setBoardTitle: (title: string) => void;
+  setThemeMode: (mode: 'cyber' | 'light' | 'contrast') => void;
+  setDensityMode: (mode: 'standard' | 'compact') => void;
 };
 
 const initialPositions: PortfolioPosition[] = [
@@ -132,6 +136,8 @@ export const useStore = create<AppState>()(
       lastUpdated: undefined,
       isFetchingPrices: false,
       boardTitle: 'BẢNG ĐIỀU KHIỂN',
+      themeMode: 'cyber',
+      densityMode: 'standard',
       setCashBalance: (amount) => set({ cashBalance: amount }),
       addPosition: (symbol) => set((state) => ({
         positions: [...state.positions, {
@@ -268,7 +274,9 @@ export const useStore = create<AppState>()(
           set({ isFetchingPrices: false });
         }
       },
-      setBoardTitle: (title) => set({ boardTitle: title })
+      setBoardTitle: (title) => set({ boardTitle: title }),
+      setThemeMode: (mode) => set({ themeMode: mode }),
+      setDensityMode: (mode) => set({ densityMode: mode }),
     }),
     {
       name: 'portfolio-storage',
@@ -280,6 +288,8 @@ export const useStore = create<AppState>()(
         lastUpdated: state.lastUpdated,
         marketPrices: state.marketPrices,
         boardTitle: state.boardTitle,
+        themeMode: state.themeMode,
+        densityMode: state.densityMode,
       }),
     }
   )
