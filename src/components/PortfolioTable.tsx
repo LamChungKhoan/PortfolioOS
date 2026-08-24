@@ -144,12 +144,12 @@ export function PortfolioTable() {
   const [showAllocationModal, setShowAllocationModal] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
 
-  // Auto-refresh prices to simulate live market integration
+  // Auto-refresh prices to simulate live market integration (1 minute interval)
   useEffect(() => {
     fetchLivePrices();
     const interval = setInterval(() => {
       fetchLivePrices();
-    }, 15000); // refresh every 15 seconds
+    }, 60000); // refresh every 1 minute (60,000ms)
     return () => clearInterval(interval);
   }, [fetchLivePrices]);
 
