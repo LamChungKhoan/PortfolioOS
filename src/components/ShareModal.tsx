@@ -19,13 +19,13 @@ import {
   Layers, 
   ChevronDown, 
   ChevronUp,
-  RefreshCw,
-  Edit3
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 import { Button } from './ui/core';
 import { useStore } from '../store/useStore';
 import { savePortfolioToCloud, cleanRoomSlug } from '../lib/portfolioCloudService';
-import { auth, googleProvider } from '../lib/firebase';
+import { auth, googleProvider, firebaseConfig } from '../lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { clsx } from 'clsx';
 
@@ -38,6 +38,8 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   const { positions, cashBalance, marketPrices, brandSettings, boardTitle, portfolioStockWeight, themeMode } = useStore();
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedShort, setCopiedShort] = useState(false);
   const [isSavingCloud, setIsSavingCloud] = useState(false);
@@ -51,7 +53,9 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   // Short URL state
   const [shortUrl, setShortUrl] = useState<string>('');
   const [isGeneratingShort, setIsGeneratingShort] = useState(false);
-  const [shortError, setShortError] = useState<string | null>(null);
+
+  // Current domain / host
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
 
   // Initialize slug and listen to auth
   useEffect(() => {
@@ -84,7 +88,6 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
     const cleanAlias = sanitizeAlias(rawAlias);
 
     setIsGeneratingShort(true);
-    setShortError(null);
     try {
       // First ensure portfolio data is saved to cloud
       await handlePublishToCloud();
@@ -125,7 +128,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
         }
       }
 
-      // 3. If exact alias was taken, try with unique suffix (e.g. karininvest-2026 or karininvest-vip)
+      // 3. If exact alias was taken, try with unique suffix (e.g. karininvest-2026)
       if (!successShortUrl && cleanAlias) {
         const uniqueBrandAlias = `${cleanAlias}-${Math.floor(100 + Math.random() * 900)}`;
         try {
@@ -208,10 +211,19 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
 
   const handleGoogleLogin = async () => {
     setIsAuthLoading(true);
+    setAuthError(null);
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Login error:', err);
+      if (err.code === 'auth/unauthorized-domain') {
+        setAuthError('unauthorized_domain');
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        // User just closed popup, no need to show scary error
+        setAuthError(null);
+      } else {
+        setAuthError(err.message || 'Không thể đăng nhập Google');
+      }
     } finally {
       setIsAuthLoading(false);
     }
@@ -220,8 +232,19 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      setAuthError(null);
     } catch (err) {
       console.error('Logout error:', err);
+    }
+  };
+
+  const handleCopyHostname = async () => {
+    try {
+      await navigator.clipboard.writeText(currentHostname);
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2000);
+    } catch (e) {
+      console.error('Copy hostname failed', e);
     }
   };
 
@@ -288,10 +311,10 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
                 </div>
                 <div>
                   <div className="text-xs font-bold text-zinc-200">
-                    {user ? user.displayName || user.email : 'Tài Khoản Môi Giới (Độc Quyền)'}
+                    {user ? user.displayName || user.email : (brandSettings?.appNamePrefix || 'Môi Giới') + ' (Độc Quyền)'}
                   </div>
                   <div className="text-[10px] text-zinc-400 font-mono">
-                    {user ? `Email: ${user.email}` : 'Đồng bộ danh mục đa thiết bị & Cloud'}
+                    {user ? `Email: ${user.email}` : 'Đồng bộ Cloud đa thiết bị theo Mã Phòng'}
                   </div>
                 </div>
               </div>
@@ -315,6 +338,41 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
                 </Button>
               )}
             </div>
+
+            {/* Auth error resolution helper (for Vercel / custom domains) */}
+            {authError === 'unauthorized_domain' && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-500/40 text-amber-200 space-y-2 text-xs"
+              >
+                <div className="flex items-center gap-2 font-bold text-amber-300">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span>Cách kích hoạt Đăng nhập Google trên Vercel:</span>
+                </div>
+                <p className="text-zinc-300 text-[11px] leading-relaxed">
+                  Google yêu cầu cấp quyền tên miền Vercel của bạn trước khi cho phép đăng nhập qua Popup:
+                </p>
+                <div className="flex items-center gap-2 bg-black/60 p-2 rounded-lg border border-amber-900/40">
+                  <code className="text-emerald-400 font-mono text-[11px] flex-1 truncate">{currentHostname}</code>
+                  <Button
+                    size="sm"
+                    onClick={handleCopyHostname}
+                    className="h-6 text-[10px] bg-amber-600 hover:bg-amber-500 text-white font-mono shrink-0"
+                  >
+                    {copiedDomain ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    {copiedDomain ? 'Đã chép' : 'Chép tên miền'}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-zinc-400">
+                  👉 Vào <strong className="text-zinc-200">Firebase Console</strong> → <strong className="text-zinc-200">Authentication</strong> → <strong className="text-zinc-200">Settings</strong> → <strong className="text-zinc-200">Authorized domains</strong> → Dán tên miền trên vào là xong!
+                </p>
+                <div className="pt-1 text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                  <Info className="w-3.5 h-3.5 shrink-0" />
+                  <span>Lưu ý: Bạn vẫn <strong>LƯU CLOUD</strong> và <strong>GỬI LINK KHÁCH</strong> bình thường 100% mà không bắt buộc phải đăng nhập Google.</span>
+                </div>
+              </motion.div>
+            )}
 
             {/* Room ID / Slug Config */}
             <div className="space-y-1.5">
@@ -483,7 +541,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Link2 className="w-3.5 h-3.5" />
-                Đường Link Gốc Đầy Đủ (Direct Link):
+                Đường Link Vercel Trực Tiếp (Direct URL):
               </label>
               
               <div className="flex items-center gap-2">
@@ -515,7 +573,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
               >
                 <div className="flex items-center gap-2">
                   <Globe className="w-4 h-4 text-cyan-400" />
-                  <span className="text-xs font-bold text-zinc-200">Muốn dùng Tên Miền Riêng (VD: danhmuc.vinhquang.vn)?</span>
+                  <span className="text-xs font-bold text-zinc-200">Gắn Tên Miền Riêng Miễn Phí Trên Vercel (VD: karininvest.vn)</span>
                 </div>
                 {showDomainGuide ? <ChevronUp className="w-4 h-4 text-zinc-400" /> : <ChevronDown className="w-4 h-4 text-zinc-400" />}
               </button>
@@ -527,13 +585,12 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
                   className="px-3.5 pb-3.5 text-xs text-zinc-400 space-y-2 border-t border-zinc-800/60 pt-3"
                 >
                   <p className="leading-relaxed">
-                    Bạn có thể gắn bất kỳ tên miền cá nhân / công ty nào của bạn vào danh mục này hoàn toàn miễn phí:
+                    Bạn đã đưa web lên Vercel thành công! Để link hiển thị 100% thương hiệu của bạn:
                   </p>
-                  <ol className="list-decimal list-inside space-y-1 text-zinc-300 font-mono text-[11px]">
-                    <li>Bấm biểu tượng <strong>Cài đặt (Settings)</strong> ở góc trên bên phải màn hình AI Studio.</li>
-                    <li>Chọn <strong>Export to GitHub</strong> hoặc <strong>Download ZIP</strong>.</li>
-                    <li>Đưa mã nguồn lên <strong>Vercel</strong> hoặc <strong>Cloudflare Pages</strong> (Miễn phí 100%).</li>
-                    <li>Gắn tên miền riêng của bạn (VD: <code className="text-emerald-400">danhmuc.vinhquang.vn</code>). Link gửi khách khi đó sẽ là: <code className="text-emerald-400">https://danhmuc.vinhquang.vn/?room={currentSlug}</code></li>
+                  <ol className="list-decimal list-inside space-y-1.5 text-zinc-300 font-mono text-[11px]">
+                    <li>Trong bảng điều khiển <strong>Vercel</strong>, vào dự án của bạn → Chọn tab <strong>Settings</strong> → <strong>Domains</strong>.</li>
+                    <li>Điền tên miền riêng của bạn (VD: <code className="text-emerald-400">danhmuc.karininvest.vn</code> hoặc đổi tên subdomain Vercel thành <code className="text-emerald-400">karininvest.vercel.app</code>).</li>
+                    <li>Link gửi khách khi đó sẽ là: <code className="text-emerald-400">https://karininvest.vercel.app/?room={currentSlug}</code> — thanh địa chỉ trình duyệt sẽ giữ nguyên vĩnh viễn tên thương hiệu của bạn!</li>
                   </ol>
                 </motion.div>
               )}
