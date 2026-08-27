@@ -11,10 +11,13 @@ const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
 interface AllocationModalProps {
   isOpen: boolean;
   onClose: () => void;
+  overridePositions?: any[];
+  isReadOnly?: boolean;
 }
 
-export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
-  const { positions } = useDerivedPortfolio();
+export function AllocationModal({ isOpen, onClose, overridePositions, isReadOnly }: AllocationModalProps) {
+  const derivedPortfolio = useDerivedPortfolio();
+  const positions = overridePositions || derivedPortfolio.positions;
   const updateAllocationWeight = useStore(state => state.updateAllocationWeight);
   const [viewType, setViewType] = useState<'pie' | 'progress'>('pie');
 
@@ -238,30 +241,37 @@ export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
                   <div className="lg:col-span-6 flex flex-col gap-5">
                     
                     {/* Controls Toolbar */}
-                    <div className="flex flex-wrap gap-2 justify-between items-center bg-zinc-900/50 p-4 border border-emerald-950/40 rounded-xl">
-                      <div>
-                        <div className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-widest">Cách thức hoạt động:</div>
-                        <div className="text-xs text-zinc-400 mt-0.5">Tự do nhập điểm/số bất kỳ. Hệ thống tự đồng cân bằng thành 100%.</div>
+                    {!isReadOnly ? (
+                      <div className="flex flex-wrap gap-2 justify-between items-center bg-zinc-900/50 p-4 border border-emerald-950/40 rounded-xl">
+                        <div>
+                          <div className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-widest">Cách thức hoạt động:</div>
+                          <div className="text-xs text-zinc-400 mt-0.5">Tự do nhập điểm/số bất kỳ. Hệ thống tự đồng cân bằng thành 100%.</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={handleEqualize}
+                            className="h-8 text-[11px] font-mono font-bold bg-emerald-950/20 hover:bg-emerald-900/40 border-emerald-900/40 text-emerald-400"
+                          >
+                             chia đều
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={handleScaleTo100}
+                            className="h-8 text-[11px] font-mono font-bold bg-blue-950/20 hover:bg-blue-900/40 border-blue-900/40 text-blue-400 flex items-center gap-1"
+                          >
+                            <Scale className="w-3 h-3" /> quy tròn 100%
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={handleEqualize}
-                          className="h-8 text-[11px] font-mono font-bold bg-emerald-950/20 hover:bg-emerald-900/40 border-emerald-900/40 text-emerald-400"
-                        >
-                           chia đều
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={handleScaleTo100}
-                          className="h-8 text-[11px] font-mono font-bold bg-blue-950/20 hover:bg-blue-900/40 border-blue-900/40 text-blue-400 flex items-center gap-1"
-                        >
-                          <Scale className="w-3 h-3" /> quy tròn 100%
-                        </Button>
+                    ) : (
+                      <div className="bg-zinc-900/50 p-4 border border-emerald-950/40 rounded-xl">
+                        <div className="text-[11px] font-mono font-bold text-emerald-400 uppercase tracking-widest">Cơ cấu danh mục khuyến nghị:</div>
+                        <div className="text-xs text-zinc-400 mt-0.5">Tỷ trọng vốn được Môi giới phân bổ chi tiết cho từng mã cổ phiếu.</div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Weight Inputs List */}
                     <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1 select-none custom-scrollbar pb-3">
@@ -288,20 +298,28 @@ export function AllocationModal({ isOpen, onClose }: AllocationModalProps) {
                             </div>
 
                             <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                min="0"
-                                max="1000"
-                                placeholder="0"
-                                className="w-20 bg-black/90 border border-zinc-800 rounded px-2.5 py-1.5 text-center font-mono text-emerald-400 text-lg font-bold focus:outline-none focus:border-emerald-500/80 transition-all shadow-inner"
-                                value={pos.allocationWeight !== undefined ? pos.allocationWeight : ''}
-                                onChange={(e) => {
-                                  const textVal = e.target.value;
-                                  const val = textVal === '' ? 0 : Number(textVal);
-                                  updateAllocationWeight(pos.id, Math.max(0, val));
-                                }}
-                              />
-                              <span className="text-xs font-mono text-zinc-500 font-semibold">%</span>
+                              {!isReadOnly ? (
+                                <>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="1000"
+                                    placeholder="0"
+                                    className="w-20 bg-black/90 border border-zinc-800 rounded px-2.5 py-1.5 text-center font-mono text-emerald-400 text-lg font-bold focus:outline-none focus:border-emerald-500/80 transition-all shadow-inner"
+                                    value={pos.allocationWeight !== undefined ? pos.allocationWeight : ''}
+                                    onChange={(e) => {
+                                      const textVal = e.target.value;
+                                      const val = textVal === '' ? 0 : Number(textVal);
+                                      updateAllocationWeight(pos.id, Math.max(0, val));
+                                    }}
+                                  />
+                                  <span className="text-xs font-mono text-zinc-500 font-semibold">%</span>
+                                </>
+                              ) : (
+                                <div className="px-3 py-1.5 rounded bg-black/80 border border-emerald-950 text-emerald-400 font-mono font-black text-base">
+                                  {finalPct.toFixed(1)}%
+                                </div>
+                              )}
                             </div>
                           </div>
                         );

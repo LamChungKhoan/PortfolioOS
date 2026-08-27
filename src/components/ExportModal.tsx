@@ -5,6 +5,7 @@ import { X, Camera, Copy, Check, Sun, Moon, Sparkles, Smartphone, Monitor, Shiel
 import { toPng, toBlob } from 'html-to-image';
 import { clsx } from 'clsx';
 import * as Icons from 'lucide-react';
+import { BrandLogoDisplay } from './BrandLogoDisplay';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -34,7 +35,8 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
   const prefix = brandSettings?.appNamePrefix || 'Portfolio';
   const suffix = brandSettings?.appNameSuffix || 'OS';
   const logoIcon = brandSettings?.logoIcon || 'LayoutDashboard';
-  const SelectedLogoIcon = (Icons as any)[logoIcon] || Icons.LayoutDashboard;
+  const customLogoUrl = brandSettings?.customLogoUrl;
+  const logoStyleMode = brandSettings?.logoStyleMode || 'auto-theme';
 
   const maxBuys = Math.max(1, ...positions.map(p => p.buys.length));
 
@@ -261,14 +263,13 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
                   exportTheme === 'cyber' && "border-emerald-900/40"
                 )}>
                   <div className="flex items-center gap-3">
-                    <div className={clsx(
-                      "w-10 h-10 rounded-xl flex items-center justify-center font-bold shadow-md",
-                      exportTheme === 'light' && "bg-emerald-600 text-white",
-                      exportTheme === 'contrast' && "bg-white text-black",
-                      exportTheme === 'cyber' && "bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.5)]"
-                    )}>
-                      <SelectedLogoIcon className="w-5 h-5" />
-                    </div>
+                    <BrandLogoDisplay
+                      customLogoUrl={customLogoUrl}
+                      logoIcon={logoIcon}
+                      logoStyleMode={logoStyleMode}
+                      themeMode={exportTheme}
+                      size="lg"
+                    />
                     <div>
                       <h2 className={clsx(
                         "text-xl font-bold tracking-tight uppercase",
@@ -472,10 +473,11 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
                               exportTheme === 'light' ? "border-slate-200 bg-slate-50/50" : "border-zinc-800"
                             )}>
                               <div className={clsx(
-                                "font-extrabold text-base tracking-wider",
-                                exportTheme === 'light' && "text-slate-900 font-sans",
-                                exportTheme === 'contrast' && "text-white font-sans",
-                                exportTheme === 'cyber' && "text-white"
+                                "font-black tracking-widest tabular-nums",
+                                exportDensity === 'compact' ? "text-base sm:text-lg" : "text-lg sm:text-xl",
+                                exportTheme === 'light' && "text-slate-900 font-mono",
+                                exportTheme === 'contrast' && "text-white font-mono",
+                                exportTheme === 'cyber' && "text-white font-mono"
                               )}>
                                 {pos.symbol || '---'}
                               </div>
@@ -503,13 +505,13 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
                                 <td
                                   key={i}
                                   className={clsx(
-                                    "border-r text-center align-middle font-bold",
-                                    exportDensity === 'compact' ? "p-2" : "p-3",
+                                    "border-r text-center align-middle font-bold tabular-nums",
+                                    exportDensity === 'compact' ? "p-2 text-sm sm:text-base" : "p-3 text-base sm:text-lg",
                                     exportTheme === 'light' ? "border-slate-200 text-slate-800" : "border-zinc-800 text-zinc-200"
                                   )}
                                 >
                                   {buy && buy.price > 0 ? (
-                                    <span className="text-sm sm:text-base font-bold">{formatStockPrice(buy.price)}</span>
+                                    <span className="font-bold tabular-nums">{formatStockPrice(buy.price)}</span>
                                   ) : (
                                     <span className="text-xs opacity-30 italic">-</span>
                                   )}
@@ -524,16 +526,17 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
                               exportTheme === 'light' ? "border-slate-200" : "border-zinc-800"
                             )}>
                               <div className={clsx(
-                                "text-sm sm:text-base font-bold",
+                                "font-black font-mono tabular-nums",
+                                exportDensity === 'compact' ? "text-base sm:text-lg" : "text-lg sm:text-xl",
                                 exportTheme === 'light' ? "text-slate-900" : "text-white"
                               )}>
                                 {formatStockPrice(pos.averageCost)}
                               </div>
                               <div className={clsx(
-                                "text-[10px] font-normal",
-                                exportTheme === 'light' ? "text-slate-500" : "text-zinc-400"
+                                "text-xs font-mono font-medium tracking-tight mt-0.5 tabular-nums",
+                                exportTheme === 'light' ? "text-slate-600" : "text-zinc-400"
                               )}>
-                                {formatCurrency(Math.round(pos.averageCost * 1000))} đ
+                                ~ {formatCurrency(Math.round(pos.averageCost * 1000))} đ
                               </div>
                             </td>
 
@@ -544,7 +547,8 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
                               exportTheme === 'light' ? "border-slate-200" : "border-zinc-800"
                             )}>
                               <div className={clsx(
-                                "text-sm sm:text-base font-bold",
+                                "font-black font-mono tabular-nums",
+                                exportDensity === 'compact' ? "text-base sm:text-lg" : "text-lg sm:text-xl",
                                 isProfit
                                   ? (exportTheme === 'light' ? "text-emerald-700" : "text-emerald-400")
                                   : (exportTheme === 'light' ? "text-rose-600" : "text-rose-400")
@@ -552,10 +556,10 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
                                 {formatStockPrice(pos.currentPrice)}
                               </div>
                               <div className={clsx(
-                                "text-[10px] font-medium",
+                                "text-xs font-mono font-bold tracking-tight mt-0.5 tabular-nums",
                                 isProfit
-                                  ? (exportTheme === 'light' ? "text-emerald-700/80" : "text-emerald-400/80")
-                                  : (exportTheme === 'light' ? "text-rose-600/80" : "text-rose-400/80")
+                                  ? (exportTheme === 'light' ? "text-emerald-700" : "text-emerald-400")
+                                  : (exportTheme === 'light' ? "text-rose-600" : "text-rose-400")
                               )}>
                                 {diffVND > 0 ? `+${formatCurrency(diffVND)}` : formatCurrency(diffVND)} đ
                               </div>
@@ -567,25 +571,26 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
                               exportDensity === 'compact' ? "p-2" : "p-3"
                             )}>
                               <div className={clsx(
-                                "text-sm sm:text-base font-extrabold",
+                                "font-black font-mono tabular-nums tracking-tight",
+                                exportDensity === 'compact' ? "text-base sm:text-lg" : "text-lg sm:text-xl",
                                 isProfit
                                   ? (exportTheme === 'light' ? "text-emerald-700" : "text-emerald-400")
                                   : (exportTheme === 'light' ? "text-rose-600" : "text-rose-400")
                               )}>
                                 {pos.unrealizedPLPercent > 0 ? '+' : ''}{pos.unrealizedPLPercent.toFixed(2)}%
                               </div>
-                              <div className="mt-0.5">
+                              <div className="mt-1 flex items-center justify-end">
                                 {isProfit ? (
                                   <span className={clsx(
-                                    "inline-block px-1.5 py-0.2 rounded text-[9px] font-sans font-bold",
-                                    exportTheme === 'light' ? "bg-emerald-100 text-emerald-800" : "bg-emerald-950 text-emerald-300 border border-emerald-800/60"
+                                    "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-sans font-black tracking-wider border select-none",
+                                    exportTheme === 'light' ? "bg-emerald-100 border-emerald-300 text-emerald-800" : "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
                                   )}>
                                     ▲ LÃI
                                   </span>
                                 ) : (
                                   <span className={clsx(
-                                    "inline-block px-1.5 py-0.2 rounded text-[9px] font-sans font-bold",
-                                    exportTheme === 'light' ? "bg-rose-100 text-rose-800" : "bg-rose-950 text-rose-300 border border-rose-800/60"
+                                    "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-sans font-black tracking-wider border select-none",
+                                    exportTheme === 'light' ? "bg-rose-100 border-rose-300 text-rose-800" : "bg-rose-500/15 border-rose-500/30 text-rose-300"
                                   )}>
                                     ▼ LỖ
                                   </span>

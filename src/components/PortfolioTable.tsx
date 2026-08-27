@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore, useDerivedPortfolio } from '../store/useStore';
 import { Card, Button } from './ui/core';
-import { Plus, Trash2, X, Activity, LayoutDashboard, ChevronUp, ChevronDown, Star, Camera, PieChart, RefreshCw, ArrowUpDown, Smartphone, Monitor } from 'lucide-react';
+import { Plus, Trash2, X, Activity, LayoutDashboard, ChevronUp, ChevronDown, Star, Camera, PieChart, RefreshCw, ArrowUpDown, Smartphone, Monitor, Share2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { StockDashboardModal } from './StockDashboardModal';
 import { AllocationModal } from './AllocationModal';
 import { ExportModal } from './ExportModal';
+import { ShareModal } from './ShareModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { toPng } from 'html-to-image';
 
@@ -91,6 +92,7 @@ export function PortfolioTable() {
   const [selectedTag, setSelectedTag] = useState<string>('Tất cả');
   const [sortOrder, setSortOrder] = useState<'none' | 'desc' | 'asc'>('none');
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   
   const allTags = Array.from(new Set(positions.flatMap(p => p.tags || [])));
   
@@ -314,6 +316,23 @@ export function PortfolioTable() {
             XUẤT BÁO CÁO (3X)
           </Button>
 
+          {/* Share Live Link for Client button */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className={clsx(
+              "transition-all font-bold",
+              isLight 
+                ? "bg-cyan-50 text-cyan-900 border-cyan-400 hover:bg-cyan-100 shadow-sm" 
+                : "bg-cyan-950/40 hover:bg-cyan-900/70 hover:text-cyan-200 border-cyan-500/50 shadow-[0_0_12px_rgba(6,182,212,0.2)]"
+            )}
+            onClick={() => setShowShareModal(true)}
+            title="Tạo đường link xem trực tiếp dành riêng cho Khách Hàng (Đã khóa quyền sửa)"
+          >
+            <Share2 className="h-3.5 w-3.5 mr-1.5 text-cyan-400" />
+            LINK KHÁCH XEM
+          </Button>
+
           {/* Allocation chart modal button */}
           <Button 
             variant="outline" 
@@ -359,7 +378,7 @@ export function PortfolioTable() {
             TỶ TRỌNG CỔ PHIẾU
           </div>
           <div className="flex items-center justify-between gap-4 mt-1">
-            <div className={clsx("text-2xl sm:text-3xl font-bold font-mono", isLight ? "text-slate-900" : "text-white")}>
+            <div className={clsx("text-2xl sm:text-3xl font-black font-mono tabular-nums", isLight ? "text-slate-900" : "text-white")}>
               {portfolioStockWeight}%
             </div>
             <div className="flex-1 max-w-[140px] flex items-center gap-2">
@@ -381,7 +400,7 @@ export function PortfolioTable() {
                   setPortfolioStockWeight(val);
                 }}
                 className={clsx(
-                  "w-12 rounded px-1 py-0.5 text-xs text-center font-mono font-bold focus:outline-none border",
+                  "w-12 rounded px-1 py-0.5 text-xs text-center font-mono font-bold focus:outline-none border tabular-nums",
                   isLight ? "bg-slate-50 border-slate-300 text-slate-800 focus:border-emerald-600" : "bg-black/60 border-emerald-950/60 text-emerald-400 focus:border-emerald-500"
                 )}
               />
@@ -402,7 +421,7 @@ export function PortfolioTable() {
           )}>
             TỶ TRỌNG TIỀN MẶT
           </div>
-          <div className={clsx("text-2xl sm:text-3xl font-bold font-mono mt-1", isLight ? "text-slate-900" : "text-white")}>
+          <div className={clsx("text-2xl sm:text-3xl font-black font-mono tabular-nums mt-1", isLight ? "text-slate-900" : "text-white")}>
             {100 - portfolioStockWeight}%
           </div>
         </div>
@@ -421,7 +440,7 @@ export function PortfolioTable() {
             % LÃI/LỖ DANH MỤC
           </div>
           <div className={clsx(
-            "text-2xl sm:text-3xl font-black font-mono mt-1",
+            "text-2xl sm:text-3xl font-black font-mono tabular-nums mt-1",
             portfolioPLPercent >= 0 
               ? (isLight ? "text-emerald-700" : (isRedTheme ? "text-[#34d399]" : "text-emerald-400"))
               : (isLight ? "text-rose-600" : "text-rose-400")
@@ -684,8 +703,8 @@ export function PortfolioTable() {
                             <input
                               type="text"
                               className={clsx(
-                                "w-full rounded font-extrabold uppercase text-center transition-colors shadow-inner font-mono tracking-wide placeholder:opacity-40 border",
-                                isCompact ? "px-1.5 py-1 text-sm sm:text-base h-8" : "px-3 py-2 text-base md:text-lg lg:text-xl",
+                                "w-full rounded font-black uppercase text-center transition-colors shadow-inner font-mono tracking-widest placeholder:opacity-40 border tabular-nums",
+                                isCompact ? "px-1.5 py-1 text-base sm:text-lg h-8.5" : "px-3 py-2 text-lg sm:text-xl lg:text-2xl font-black",
                                 isLight ? "bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-emerald-600" : "bg-black/60 border-zinc-800 text-white focus:border-zinc-600"
                               )}
                               value={pos.symbol}
@@ -742,8 +761,8 @@ export function PortfolioTable() {
                                   type="number"
                                   step="any"
                                   className={clsx(
-                                    "w-full rounded text-center transition-colors font-mono font-bold border shadow-inner",
-                                    isCompact ? "px-1.5 py-1 text-sm sm:text-base h-8" : "px-3 py-2 text-base md:text-lg lg:text-xl",
+                                    "w-full rounded text-center transition-colors font-mono font-bold border shadow-inner tabular-nums",
+                                    isCompact ? "px-1.5 py-1 text-sm sm:text-base h-8.5" : "px-3 py-2 text-base md:text-lg lg:text-xl",
                                     isLight ? "bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-emerald-600" : "bg-black/60 border-zinc-800 text-white focus:border-zinc-600"
                                   )}
                                   value={buy.price || ''}
@@ -763,7 +782,7 @@ export function PortfolioTable() {
                             ) : (
                               <div className={clsx(
                                 "mt-0.5 flex items-center justify-center opacity-30 italic text-xs border border-dashed rounded font-mono uppercase tracking-wider",
-                                isCompact ? "h-8" : "h-[46px]",
+                                isCompact ? "h-8.5" : "h-[46px]",
                                 isLight ? "border-slate-300 text-slate-500" : "border-emerald-900/40 text-slate-400"
                               )}>
                                 -
@@ -803,15 +822,15 @@ export function PortfolioTable() {
                         isLight ? "border-slate-200" : "border-emerald-900/30"
                       )}>
                         <div className={clsx(
-                          "font-bold font-mono",
-                          isCompact ? "text-sm sm:text-base" : "text-base md:text-lg lg:text-xl",
+                          "font-black font-mono tabular-nums",
+                          isCompact ? "text-base sm:text-lg" : "text-lg md:text-xl lg:text-2xl",
                           isLight ? "text-slate-900" : "text-emerald-50"
                         )}>
                           {formatStockPrice(pos.averageCost)}
                         </div>
                         <div className={clsx(
-                          "text-[10px] sm:text-[11px] font-mono font-medium tracking-tight",
-                          isLight ? "text-slate-500" : "text-zinc-400/80"
+                          "text-xs font-mono font-medium tracking-tight mt-0.5 tabular-nums",
+                          isLight ? "text-slate-600" : "text-zinc-400"
                         )}>
                           ~ {formatCurrency(Math.round(pos.averageCost * 1000))} đ
                         </div>
@@ -824,9 +843,9 @@ export function PortfolioTable() {
                         isLight ? "border-slate-200" : "border-emerald-900/30"
                       )}>
                         <div className="flex flex-col items-end gap-1">
-                          <div className="flex items-center justify-end gap-1 whitespace-nowrap w-full">
+                          <div className="flex items-center justify-end gap-1.5 whitespace-nowrap w-full">
                             <div className={clsx(
-                              "w-2 h-2 rounded-full animate-pulse shrink-0", 
+                              "w-2.5 h-2.5 rounded-full animate-pulse shrink-0", 
                               isProfit 
                                 ? (isLight ? "bg-emerald-600" : "bg-emerald-500") 
                                 : "bg-rose-500"
@@ -835,10 +854,10 @@ export function PortfolioTable() {
                               type="number"
                               step="any"
                               className={clsx(
-                                "rounded text-right font-extrabold font-mono transition-all focus:outline-none border shadow-inner",
-                                isCompact ? "w-24 sm:w-28 px-1.5 py-0.5 text-sm sm:text-base h-8" : "w-28 px-2 py-1 text-base md:text-lg",
+                                "rounded text-right font-black font-mono transition-all focus:outline-none border shadow-inner tabular-nums",
+                                isCompact ? "w-24 sm:w-28 px-1.5 py-0.5 text-base sm:text-lg h-8.5" : "w-28 sm:w-32 px-2 py-1 text-lg md:text-xl lg:text-2xl",
                                 isLight 
-                                  ? (isProfit ? "bg-emerald-50/50 border-emerald-300 text-emerald-800 focus:bg-white" : "bg-rose-50/50 border-rose-300 text-rose-700 focus:bg-white")
+                                  ? (isProfit ? "bg-emerald-50/70 border-emerald-300 text-emerald-800 focus:bg-white" : "bg-rose-50/70 border-rose-300 text-rose-700 focus:bg-white")
                                   : (isProfit ? "bg-black/60 border-zinc-800 text-emerald-400 focus:border-zinc-700" : "bg-black/60 border-zinc-800 text-rose-400 focus:border-zinc-700")
                               )}
                               value={pos.currentPrice || ''}
@@ -850,20 +869,12 @@ export function PortfolioTable() {
                             />
                           </div>
                           <div className={clsx(
-                            "text-[10px] sm:text-[11px] font-mono font-medium tracking-tight",
-                            isLight ? "text-slate-600" : "text-zinc-400/80"
+                            "text-xs font-mono font-bold tracking-tight tabular-nums mt-0.5",
+                            isProfit 
+                              ? (isLight ? "text-emerald-700" : "text-emerald-400")
+                              : (isLight ? "text-rose-600" : "text-rose-400")
                           )}>
-                            {priceDiff > 0 ? (
-                              <span className={isLight ? "text-emerald-700" : "text-emerald-400"}>
-                                +{formatCurrency(diffVND)} đ
-                              </span>
-                            ) : priceDiff < 0 ? (
-                              <span className={isLight ? "text-rose-600" : "text-rose-400"}>
-                                {formatCurrency(diffVND)} đ
-                              </span>
-                            ) : (
-                              <span className="text-zinc-500">0 đ</span>
-                            )}
+                            {priceDiff > 0 ? `+${formatCurrency(diffVND)}` : formatCurrency(diffVND)} đ
                           </div>
                         </div>
                       </td>
@@ -875,26 +886,26 @@ export function PortfolioTable() {
                         isLight ? "border-slate-200" : "border-emerald-900/30"
                       )}>
                         <div className={clsx(
-                          "font-extrabold font-mono",
-                          isCompact ? "text-sm sm:text-base" : "text-base md:text-lg lg:text-xl",
+                          "font-black font-mono tabular-nums tracking-tight",
+                          isCompact ? "text-base sm:text-lg" : "text-lg md:text-xl lg:text-2xl",
                           isProfit 
                             ? (isLight ? "text-emerald-700" : "text-emerald-400") 
                             : (isLight ? "text-rose-600" : "text-rose-400")
                         )}>
                           {pos.unrealizedPLPercent > 0 ? '+' : ''}{pos.unrealizedPLPercent.toFixed(2)}%
                         </div>
-                        <div className="mt-0.5 flex items-center justify-end">
+                        <div className="mt-1 flex items-center justify-end">
                           {isProfit ? (
                             <span className={clsx(
-                              "inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-sans font-extrabold tracking-wider border select-none",
-                              isLight ? "bg-emerald-100 border-emerald-300 text-emerald-800" : "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
+                              "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-sans font-black tracking-wider border select-none",
+                              isLight ? "bg-emerald-100 border-emerald-300 text-emerald-800" : "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
                             )}>
                               ▲ LÃI
                             </span>
                           ) : (
                             <span className={clsx(
-                              "inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-sans font-extrabold tracking-wider border select-none",
-                              isLight ? "bg-rose-100 border-rose-300 text-rose-800" : "bg-rose-500/10 border-rose-500/25 text-rose-400"
+                              "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-sans font-black tracking-wider border select-none",
+                              isLight ? "bg-rose-100 border-rose-300 text-rose-800" : "bg-rose-500/15 border-rose-500/30 text-rose-300"
                             )}>
                               ▼ LỖ
                             </span>
@@ -968,6 +979,11 @@ export function PortfolioTable() {
       <ExportModal
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
+      />
+
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
       />
     </div>
   );

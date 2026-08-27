@@ -6,11 +6,127 @@
 import React, { useState, useEffect } from 'react';
 import { PortfolioTable } from './components/PortfolioTable';
 import { BrandSettingsModal } from './components/BrandSettingsModal';
+import { BrandLogoDisplay } from './components/BrandLogoDisplay';
+import { ReadOnlyPortfolioView } from './components/ReadOnlyPortfolioView';
+import { decodePortfolioFromUrl, SharedPortfolioPayload } from './utils/shareUtils';
+import { subscribeToCloudPortfolio, fetchPortfolioFromCloud, cleanRoomSlug } from './lib/portfolioCloudService';
 import { useStore } from './store/useStore';
 import { clsx } from 'clsx';
 import * as Icons from 'lucide-react';
 
 export default function App() {
+  const [readOnlyPayload, setReadOnlyPayload] = useState<SharedPortfolioPayload | null>(null);
+  const [cloudRoomId, setCloudRoomId] = useState<string | null>(null);
+  const [isLoadingCloudRoom, setIsLoadingCloudRoom] = useState(false);
+  const [cloudRoomError, setCloudRoomError] = useState<string | null>(null);
+
+  // Check URL params (?room=slug) or URL hash (#share=...) on mount & url changes
+  useEffect(() => {
+    const parseUrl = async () => {
+      const search = window.location.search;
+      const hash = window.location.hash;
+      const params = new URLSearchParams(search);
+      const roomParam = params.get('room') || params.get('portfolio');
+
+      // 1. If Cloud Room ID provided (e.g. ?room=vinh-quang)
+      if (roomParam) {
+        const cleanSlug = cleanRoomSlug(roomParam);
+        setCloudRoomId(cleanSlug);
+        setIsLoadingCloudRoom(true);
+        setCloudRoomError(null);
+
+        // Fetch initial data
+        let initialData = await fetchPortfolioFromCloud(cleanSlug);
+        
+        // Quick retry once in case it's currently saving
+        if (!initialData) {
+          await new Promise(r => setTimeout(r, 1000));
+          initialData = await fetchPortfolioFromCloud(cleanSlug);
+        }
+
+        if (initialData) {
+          setReadOnlyPayload({
+            v: 1,
+            title: initialData.title,
+            positions: initialData.positions,
+            cashBalance: initialData.cashBalance,
+            marketPrices: initialData.marketPrices,
+            brandSettings: initialData.brandSettings,
+            portfolioStockWeight: initialData.portfolioStockWeight,
+            themeMode: initialData.themeMode,
+            brokerNotes: initialData.brokerNotes,
+            createdDate: new Date().toLocaleDateString('vi-VN'),
+          });
+          setIsLoadingCloudRoom(false);
+        } else {
+          // If still not found after retry, set timer for error display
+          setTimeout(() => {
+            setIsLoadingCloudRoom(prev => {
+              if (prev) {
+                setCloudRoomError(`Không tìm thấy danh mục cho mã phòng "${roomParam}". Vui lòng kiểm tra lại đường link từ Môi giới hoặc bấm "LƯU LÊN CLOUD" trên máy Môi giới.`);
+                return false;
+              }
+              return false;
+            });
+          }, 1500);
+        }
+
+        // Subscribe to real-time updates from broker
+        const unsub = subscribeToCloudPortfolio(cleanSlug, (data) => {
+          if (data) {
+            setReadOnlyPayload({
+              v: 1,
+              title: data.title,
+              positions: data.positions,
+              cashBalance: data.cashBalance,
+              marketPrices: data.marketPrices,
+              brandSettings: data.brandSettings,
+              portfolioStockWeight: data.portfolioStockWeight,
+              themeMode: data.themeMode,
+              brokerNotes: data.brokerNotes,
+              createdDate: new Date().toLocaleDateString('vi-VN'),
+            });
+            setIsLoadingCloudRoom(false);
+            setCloudRoomError(null);
+          }
+        });
+
+        return () => unsub();
+      }
+
+      // 2. Fallback to hash token if available
+      let shareToken = '';
+      if (hash.includes('share=')) {
+        shareToken = hash.split('share=')[1]?.split('&')[0] || '';
+      }
+
+      if (shareToken) {
+        const decoded = decodePortfolioFromUrl(shareToken);
+        if (decoded) {
+          setReadOnlyPayload(decoded);
+          return;
+        }
+      }
+
+      setReadOnlyPayload(null);
+      setCloudRoomId(null);
+    };
+
+    parseUrl();
+    window.addEventListener('hashchange', parseUrl);
+    window.addEventListener('popstate', parseUrl);
+    return () => {
+      window.removeEventListener('hashchange', parseUrl);
+      window.removeEventListener('popstate', parseUrl);
+    };
+  }, []);
+
+  const handleExitReadOnly = () => {
+    window.history.pushState({}, '', window.location.pathname);
+    setReadOnlyPayload(null);
+    setCloudRoomId(null);
+  };
+
   const brandSettings = useStore(state => state.brandSettings);
   const themeMode = useStore(state => state.themeMode || 'cyber');
   const setThemeMode = useStore(state => state.setThemeMode);
@@ -20,31 +136,68 @@ export default function App() {
   const prefix = brandSettings?.appNamePrefix || 'Portfolio';
   const suffix = brandSettings?.appNameSuffix || 'OS';
   const logoIcon = brandSettings?.logoIcon || 'LayoutDashboard';
+  const customLogoUrl = brandSettings?.customLogoUrl;
+  const logoStyleMode = brandSettings?.logoStyleMode || 'clean';
   const themeHue = brandSettings?.themeHue ?? 161;
   const themeSaturation = brandSettings?.themeSaturation || '84%';
 
   // Update dynamic CSS custom variables on the root document element whenever brand color changes
   useEffect(() => {
-    document.documentElement.style.setProperty('--theme-hue', String(themeHue));
-    document.documentElement.style.setProperty('--theme-saturation', themeSaturation);
+    const activeHue = readOnlyPayload?.brandSettings?.themeHue ?? themeHue;
+    const activeSat = readOnlyPayload?.brandSettings?.themeSaturation ?? themeSaturation;
 
-    // Dynamic lightness adjustment for perceptually darker wavelengths (deep blue, purple, dark red/pink)
+    document.documentElement.style.setProperty('--theme-hue', String(activeHue));
+    document.documentElement.style.setProperty('--theme-saturation', activeSat);
+
     let lightnessAdjust = 0;
-    if (themeHue >= 210 && themeHue <= 285) {
-      // Blue, Indigo, Violet: highly dark to human sight, apply +10% boost
+    if (activeHue >= 210 && activeHue <= 285) {
       lightnessAdjust = 10;
-    } else if (themeHue >= 190 && themeHue < 210) {
-      // Cyan-blue transition: apply +5%
+    } else if (activeHue >= 190 && activeHue < 210) {
       lightnessAdjust = 5;
-    } else if (themeHue > 330 || themeHue <= 18) {
-      // Red, Rose, Ruby: moderately dark, apply +6%
+    } else if (activeHue > 330 || activeHue <= 18) {
       lightnessAdjust = 6;
     }
     document.documentElement.style.setProperty('--theme-lightness-adjust', `${lightnessAdjust}%`);
-  }, [themeHue, themeSaturation]);
+  }, [themeHue, themeSaturation, readOnlyPayload]);
 
-  // Construct selected Lucide logo icon dynamically
-  const SelectedLogoIcon = (Icons as any)[logoIcon] || Icons.LayoutDashboard;
+  // Loading state when opening cloud room link
+  if (isLoadingCloudRoom) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex flex-col items-center justify-center text-white space-y-4 p-4">
+        <Icons.Loader2 className="w-10 h-10 text-emerald-400 animate-spin" />
+        <div className="text-sm font-mono text-emerald-300">
+          Đang kết nối danh mục trực tiếp từ Môi Giới ({cloudRoomId})...
+        </div>
+      </div>
+    );
+  }
+
+  // Error state if cloud room does not exist
+  if (cloudRoomError && !readOnlyPayload) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex flex-col items-center justify-center text-white space-y-4 p-4 text-center">
+        <Icons.ShieldAlert className="w-12 h-12 text-rose-500" />
+        <h2 className="text-xl font-bold text-zinc-100 font-display">KHÔNG TÌM THẤY PHÒNG DANH MỤC</h2>
+        <p className="text-sm text-zinc-400 max-w-md">{cloudRoomError}</p>
+        <button
+          onClick={handleExitReadOnly}
+          className="mt-4 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
+        >
+          Về Trang Chủ PortfolioOS
+        </button>
+      </div>
+    );
+  }
+
+  // If in Shared Client Read-Only Mode, render client view directly
+  if (readOnlyPayload) {
+    return (
+      <ReadOnlyPortfolioView
+        data={readOnlyPayload}
+        onExitReadOnly={handleExitReadOnly}
+      />
+    );
+  }
 
   return (
     <div className={clsx(
@@ -82,24 +235,26 @@ export default function App() {
         themeMode === 'contrast' && "bg-black border-b border-zinc-800",
         themeMode === 'cyber' && "border-b border-emerald-900/40 glass-panel"
       )}>
-        <div className="flex items-center">
-          <div className={clsx(
-            "w-7 h-7 rounded flex items-center justify-center mr-3 transition-all duration-500",
-            themeMode === 'light' && "bg-emerald-600 shadow-sm",
-            themeMode === 'contrast' && "bg-white shadow-none",
-            themeMode === 'cyber' && "bg-emerald-500 shadow-[0_0_15px_var(--theme-emerald-500)]"
-          )}>
-            <SelectedLogoIcon className={clsx(
-              "w-4 h-4 font-bold",
-              themeMode === 'light' ? "text-white" : "text-black"
-            )} />
+        <div 
+          onClick={() => setIsBrandModalOpen(true)}
+          title="Nhấp để tùy chỉnh Thương hiệu & Logo riêng"
+          className="flex items-center group cursor-pointer"
+        >
+          <div className="mr-3 transition-transform group-hover:scale-105">
+            <BrandLogoDisplay
+              customLogoUrl={customLogoUrl}
+              logoIcon={logoIcon}
+              logoStyleMode={logoStyleMode}
+              themeMode={themeMode}
+              size="md"
+            />
           </div>
           <span 
             className={clsx(
-              "font-bold tracking-tight font-display text-xl mt-0.5 select-none",
-              themeMode === 'light' && "text-slate-900",
-              themeMode === 'contrast' && "text-white",
-              themeMode === 'cyber' && "text-white"
+              "font-bold tracking-tight font-display text-xl mt-0.5 select-none transition-colors",
+              themeMode === 'light' && "text-slate-900 group-hover:text-emerald-700",
+              themeMode === 'contrast' && "text-white group-hover:text-zinc-200",
+              themeMode === 'cyber' && "text-white group-hover:text-emerald-300"
             )} 
             style={themeMode === 'cyber' ? { textShadow: `0 0 10px color-mix(in srgb, hsl(${themeHue} ${themeSaturation} 44%) 30%, transparent)` } : undefined}
           >

@@ -41,6 +41,8 @@ export type BrandSettings = {
   appNamePrefix: string;
   appNameSuffix: string;
   logoIcon: string;
+  customLogoUrl?: string;
+  logoStyleMode?: 'vibrant-badge' | 'white-badge' | 'neon-glow' | 'original' | 'auto-theme' | 'framed';
   themeHue: number;
   themeSaturation: string;
   themeName: string;
