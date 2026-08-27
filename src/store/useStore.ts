@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { CloudPortfolioData, UserSavedRoom } from '../lib/portfolioCloudService';
 
 export function isVietnameseMarketHours(): boolean {
   const now = new Date();
@@ -10,7 +11,6 @@ export function isVietnameseMarketHours(): boolean {
   const minutesSinceMidnight = hour * 60 + minute;
   return minutesSinceMidnight >= (9 * 60) && minutesSinceMidnight <= (14 * 60 + 45);
 }
-
 
 export type BuyEntry = {
   price: number;
@@ -42,11 +42,20 @@ export type BrandSettings = {
   appNameSuffix: string;
   logoIcon: string;
   customLogoUrl?: string;
-  logoStyleMode?: 'vibrant-badge' | 'white-badge' | 'neon-glow' | 'original' | 'auto-theme' | 'framed';
+  logoStyleMode?: 'clean' | 'glass' | 'light' | 'vibrant-badge' | 'white-badge' | 'neon-glow' | 'original' | 'auto-theme' | 'framed';
   themeHue: number;
   themeSaturation: string;
   themeName: string;
 };
+
+export interface AppUser {
+  uid: string;
+  email: string;
+  displayName?: string;
+  photoURL?: string;
+}
+
+export type CloudSyncStatus = 'synced' | 'saving' | 'offline' | 'error';
 
 type AppState = {
   positions: PortfolioPosition[];
@@ -59,6 +68,15 @@ type AppState = {
   boardTitle: string;
   themeMode: 'cyber' | 'light' | 'contrast';
   densityMode: 'standard' | 'compact';
+  brokerNotes?: string;
+  
+  // Google Account Cloud Sync State
+  activeRoomId: string;
+  currentUser: AppUser | null;
+  cloudSyncStatus: CloudSyncStatus;
+  userSavedRooms: UserSavedRoom[];
+  
+  // Actions
   addPosition: (symbol: string) => void;
   updateSymbol: (id: string, symbol: string) => void;
   removePosition: (id: string) => void;
@@ -80,6 +98,15 @@ type AppState = {
   setBoardTitle: (title: string) => void;
   setThemeMode: (mode: 'cyber' | 'light' | 'contrast') => void;
   setDensityMode: (mode: 'standard' | 'compact') => void;
+  setBrokerNotes: (notes: string) => void;
+  
+  // Cloud Actions
+  setActiveRoomId: (id: string) => void;
+  setCurrentUser: (user: AppUser | null) => void;
+  setCloudSyncStatus: (status: CloudSyncStatus) => void;
+  setUserSavedRooms: (rooms: UserSavedRoom[]) => void;
+  loadCloudState: (payload: Partial<CloudPortfolioData>) => void;
+  createNewPortfolio: (title: string, newSlug: string) => void;
 };
 
 const initialPositions: PortfolioPosition[] = [
@@ -140,6 +167,49 @@ export const useStore = create<AppState>()(
       boardTitle: 'BẢNG ĐIỀU KHIỂN',
       themeMode: 'cyber',
       densityMode: 'standard',
+      brokerNotes: '',
+      
+      activeRoomId: 'portfolio',
+      currentUser: null,
+      cloudSyncStatus: 'synced',
+      userSavedRooms: [],
+
+      setActiveRoomId: (id) => set({ activeRoomId: id }),
+      setCurrentUser: (user) => set({ currentUser: user }),
+      setCloudSyncStatus: (status) => set({ cloudSyncStatus: status }),
+      setUserSavedRooms: (rooms) => set({ userSavedRooms: rooms }),
+      setBrokerNotes: (notes) => set({ brokerNotes: notes }),
+
+      loadCloudState: (payload) => set((state) => ({
+        positions: payload.positions && payload.positions.length > 0 ? payload.positions : state.positions,
+        cashBalance: payload.cashBalance !== undefined ? payload.cashBalance : state.cashBalance,
+        marketPrices: payload.marketPrices ? { ...state.marketPrices, ...payload.marketPrices } : state.marketPrices,
+        brandSettings: payload.brandSettings ? { ...state.brandSettings, ...payload.brandSettings } : state.brandSettings,
+        portfolioStockWeight: payload.portfolioStockWeight !== undefined ? payload.portfolioStockWeight : state.portfolioStockWeight,
+        boardTitle: payload.title || state.boardTitle,
+        themeMode: payload.themeMode || state.themeMode,
+        brokerNotes: payload.brokerNotes !== undefined ? payload.brokerNotes : state.brokerNotes,
+        activeRoomId: payload.id || state.activeRoomId,
+        cloudSyncStatus: 'synced'
+      })),
+
+      createNewPortfolio: (title, newSlug) => set({
+        boardTitle: title,
+        activeRoomId: newSlug,
+        positions: [
+          {
+            id: Math.random().toString(36).substr(2, 9),
+            symbol: 'HPG',
+            buys: [{ price: 28, volume: 10000 }],
+            tags: ['Thép'],
+            allocationWeight: 100
+          }
+        ],
+        cashBalance: 500000000,
+        brokerNotes: '',
+        cloudSyncStatus: 'saving'
+      }),
+
       setCashBalance: (amount) => set({ cashBalance: amount }),
       addPosition: (symbol) => set((state) => ({
         positions: [...state.positions, {
@@ -292,6 +362,8 @@ export const useStore = create<AppState>()(
         boardTitle: state.boardTitle,
         themeMode: state.themeMode,
         densityMode: state.densityMode,
+        brokerNotes: state.brokerNotes,
+        activeRoomId: state.activeRoomId,
       }),
     }
   )

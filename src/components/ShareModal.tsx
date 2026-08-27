@@ -16,7 +16,7 @@ import {
   Globe, 
   QrCode, 
   Scissors, 
-  Layers, 
+  Folder,
   ChevronDown, 
   ChevronUp,
   AlertTriangle,
@@ -24,8 +24,8 @@ import {
 } from 'lucide-react';
 import { Button } from './ui/core';
 import { useStore } from '../store/useStore';
-import { savePortfolioToCloud, cleanRoomSlug } from '../lib/portfolioCloudService';
-import { auth, googleProvider, firebaseConfig } from '../lib/firebase';
+import { savePortfolioToCloud, cleanRoomSlug, fetchPortfolioFromCloud } from '../lib/portfolioCloudService';
+import { auth, googleProvider } from '../lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { clsx } from 'clsx';
 
@@ -35,7 +35,22 @@ interface ShareModalProps {
 }
 
 export function ShareModal({ isOpen, onClose }: ShareModalProps) {
-  const { positions, cashBalance, marketPrices, brandSettings, boardTitle, portfolioStockWeight, themeMode } = useStore();
+  const { 
+    positions, 
+    cashBalance, 
+    marketPrices, 
+    brandSettings, 
+    boardTitle, 
+    portfolioStockWeight, 
+    themeMode,
+    activeRoomId,
+    setActiveRoomId,
+    userSavedRooms,
+    loadCloudState,
+    brokerNotes: storeBrokerNotes,
+    setBrokerNotes: setStoreBrokerNotes
+  } = useStore();
+
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -59,17 +74,18 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
 
   // Initialize slug and listen to auth
   useEffect(() => {
-    const defaultSlug = cleanRoomSlug(brandSettings?.appNamePrefix || 'vinh-quang');
+    const defaultSlug = cleanRoomSlug(activeRoomId || brandSettings?.appNamePrefix || 'portfolio');
     setCustomSlug(defaultSlug);
     setCustomAlias(defaultSlug);
+    setBrokerNotes(storeBrokerNotes || '');
 
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
     });
     return () => unsub();
-  }, [brandSettings?.appNamePrefix]);
+  }, [activeRoomId, brandSettings?.appNamePrefix, storeBrokerNotes]);
 
-  const currentSlug = cleanRoomSlug(customSlug || 'vinh-quang');
+  const currentSlug = cleanRoomSlug(customSlug || activeRoomId || 'portfolio');
   const liveShareUrl = `${window.location.origin}${window.location.pathname}?room=${currentSlug}`;
 
   // Clean alias for custom branded link
@@ -173,8 +189,11 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   const handlePublishToCloud = async (slugToUse?: string) => {
     setIsSavingCloud(true);
     setSavedSuccess(false);
-    const targetSlug = cleanRoomSlug(slugToUse || customSlug || 'vinh-quang');
+    const targetSlug = cleanRoomSlug(slugToUse || customSlug || activeRoomId || 'portfolio');
     try {
+      setStoreBrokerNotes(brokerNotes.trim());
+      setActiveRoomId(targetSlug);
+
       const res = await savePortfolioToCloud(targetSlug, {
         title: boardTitle,
         positions,
@@ -199,10 +218,20 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
     return targetSlug;
   };
 
+  const handleSelectSavedRoom = async (roomId: string) => {
+    setCustomSlug(roomId);
+    setCustomAlias(roomId);
+    setActiveRoomId(roomId);
+    const data = await fetchPortfolioFromCloud(roomId);
+    if (data) {
+      loadCloudState(data);
+    }
+  };
+
   // Auto publish whenever modal is opened
   useEffect(() => {
     if (isOpen) {
-      const target = cleanRoomSlug(customSlug || brandSettings?.appNamePrefix || 'vinh-quang');
+      const target = cleanRoomSlug(customSlug || activeRoomId || 'portfolio');
       handlePublishToCloud(target);
     }
   }, [isOpen]);
@@ -219,7 +248,6 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
       if (err.code === 'auth/unauthorized-domain') {
         setAuthError('unauthorized_domain');
       } else if (err.code === 'auth/popup-closed-by-user') {
-        // User just closed popup, no need to show scary error
         setAuthError(null);
       } else {
         setAuthError(err.message || 'Không thể đăng nhập Google');
@@ -314,7 +342,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
                     {user ? user.displayName || user.email : (brandSettings?.appNamePrefix || 'Môi Giới') + ' (Độc Quyền)'}
                   </div>
                   <div className="text-[10px] text-zinc-400 font-mono">
-                    {user ? `Email: ${user.email}` : 'Đồng bộ Cloud đa thiết bị theo Mã Phòng'}
+                    {user ? `Gmail: ${user.email} (Đã kết nối Cloud)` : 'Đăng nhập Google để đồng bộ tự động đa thiết bị'}
                   </div>
                 </div>
               </div>
@@ -331,13 +359,42 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
                   size="sm"
                   onClick={handleGoogleLogin}
                   disabled={isAuthLoading}
-                  className="bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold flex items-center gap-1.5"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5"
                 >
                   {isAuthLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogIn className="w-3.5 h-3.5" />}
                   Đăng Nhập Google
                 </Button>
               )}
             </div>
+
+            {/* If user has multiple saved rooms, show quick badges */}
+            {user && userSavedRooms.length > 0 && (
+              <div className="space-y-1.5 bg-zinc-950/60 p-2.5 rounded-xl border border-zinc-800/80">
+                <div className="text-[11px] font-bold text-zinc-400 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Folder className="w-3.5 h-3.5 text-emerald-400" />
+                    Các danh mục đã tạo theo Gmail của bạn:
+                  </span>
+                  <span className="text-[10px] font-mono text-emerald-400">{userSavedRooms.length} danh mục</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                  {userSavedRooms.map((r) => (
+                    <button
+                      key={r.id}
+                      onClick={() => handleSelectSavedRoom(r.id)}
+                      className={clsx(
+                        "text-[11px] px-2.5 py-1 rounded-lg border font-mono transition-all",
+                        customSlug === r.id 
+                          ? "bg-emerald-950/80 border-emerald-500 text-emerald-300 font-bold shadow-sm" 
+                          : "bg-black/40 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700"
+                      )}
+                    >
+                      {r.title || r.id} <span className="text-[9px] opacity-60">({r.id})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Auth error resolution helper (for Vercel / custom domains) */}
             {authError === 'unauthorized_domain' && (
@@ -367,17 +424,13 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
                 <p className="text-[11px] text-zinc-400">
                   👉 Vào <strong className="text-zinc-200">Firebase Console</strong> → <strong className="text-zinc-200">Authentication</strong> → <strong className="text-zinc-200">Settings</strong> → <strong className="text-zinc-200">Authorized domains</strong> → Dán tên miền trên vào là xong!
                 </p>
-                <div className="pt-1 text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
-                  <Info className="w-3.5 h-3.5 shrink-0" />
-                  <span>Lưu ý: Bạn vẫn <strong>LƯU CLOUD</strong> và <strong>GỬI LINK KHÁCH</strong> bình thường 100% mà không bắt buộc phải đăng nhập Google.</span>
-                </div>
               </motion.div>
             )}
 
             {/* Room ID / Slug Config */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center justify-between">
-                <span>Tên Phòng / Định Danh Riêng:</span>
+                <span>Tên Phòng / Định Danh Riêng (Mã URL):</span>
                 <span className="text-[10px] text-zinc-400 lowercase">mỗi mã phòng là một danh mục riêng biệt</span>
               </label>
               <div className="flex items-center gap-2">
@@ -390,9 +443,9 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
                   onChange={(e) => {
                     setCustomSlug(e.target.value);
                     setCustomAlias(e.target.value);
-                    setShortUrl(''); // Reset short url when room slug changes
+                    setShortUrl('');
                   }}
-                  placeholder="vinh-quang hoặc Karininvest"
+                  placeholder="vinh-quang hoặc applecap"
                   className="flex-1 text-xs rounded-lg bg-black/60 border border-zinc-800 focus:border-emerald-500 focus:outline-none p-2 text-zinc-100 font-mono"
                 />
                 <Button
@@ -427,7 +480,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
               />
             </div>
 
-            {/* Short Link Generator Box (Tạo Link Ngắn Thương Hiệu Riêng) */}
+            {/* Short Link Generator Box */}
             <div className="p-4 rounded-xl bg-gradient-to-b from-emerald-950/30 to-black/60 border border-emerald-500/40 space-y-3 shadow-lg">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -459,7 +512,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
                     value={customAlias}
                     onChange={(e) => {
                       setCustomAlias(e.target.value);
-                      setShortUrl(''); // Reset short url when alias is edited
+                      setShortUrl('');
                     }}
                     placeholder={currentSlug}
                     className="flex-1 text-xs rounded-lg bg-black/80 border border-zinc-800 focus:border-emerald-500 focus:outline-none px-2.5 py-1.5 text-emerald-300 font-mono font-bold"

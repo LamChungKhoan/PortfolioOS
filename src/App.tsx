@@ -8,17 +8,24 @@ import { PortfolioTable } from './components/PortfolioTable';
 import { BrandSettingsModal } from './components/BrandSettingsModal';
 import { BrandLogoDisplay } from './components/BrandLogoDisplay';
 import { ReadOnlyPortfolioView } from './components/ReadOnlyPortfolioView';
+import { ShareModal } from './components/ShareModal';
+import { PortfolioCloudBar } from './components/PortfolioCloudBar';
 import { decodePortfolioFromUrl, SharedPortfolioPayload } from './utils/shareUtils';
 import { subscribeToCloudPortfolio, fetchPortfolioFromCloud, cleanRoomSlug } from './lib/portfolioCloudService';
 import { useStore } from './store/useStore';
+import { useCloudSync } from './hooks/useCloudSync';
 import { clsx } from 'clsx';
 import * as Icons from 'lucide-react';
 
 export default function App() {
+  // Activate automatic Google Account Cloud Synchronization across all tabs/devices
+  useCloudSync();
+
   const [readOnlyPayload, setReadOnlyPayload] = useState<SharedPortfolioPayload | null>(null);
   const [cloudRoomId, setCloudRoomId] = useState<string | null>(null);
   const [isLoadingCloudRoom, setIsLoadingCloudRoom] = useState(false);
   const [cloudRoomError, setCloudRoomError] = useState<string | null>(null);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   // Check URL params (?room=slug) or URL hash (#share=...) on mount & url changes
   useEffect(() => {
@@ -28,7 +35,7 @@ export default function App() {
       const params = new URLSearchParams(search);
       const roomParam = params.get('room') || params.get('portfolio');
 
-      // 1. If Cloud Room ID provided (e.g. ?room=vinh-quang)
+      // 1. If Cloud Room ID provided (e.g. ?room=vinh-quang or ?room=applecap)
       if (roomParam) {
         const cleanSlug = cleanRoomSlug(roomParam);
         setCloudRoomId(cleanSlug);
@@ -230,7 +237,7 @@ export default function App() {
 
       {/* Main Console Header */}
       <header className={clsx(
-        "relative z-20 h-14 px-4 sm:px-6 flex items-center justify-between shrink-0 transition-colors duration-300",
+        "relative z-20 h-14 px-3 sm:px-6 flex items-center justify-between shrink-0 transition-colors duration-300 gap-2 sm:gap-4",
         themeMode === 'light' && "bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm",
         themeMode === 'contrast' && "bg-black border-b border-zinc-800",
         themeMode === 'cyber' && "border-b border-emerald-900/40 glass-panel"
@@ -238,9 +245,9 @@ export default function App() {
         <div 
           onClick={() => setIsBrandModalOpen(true)}
           title="Nhấp để tùy chỉnh Thương hiệu & Logo riêng"
-          className="flex items-center group cursor-pointer"
+          className="flex items-center group cursor-pointer shrink-0"
         >
-          <div className="mr-3 transition-transform group-hover:scale-105">
+          <div className="mr-2.5 transition-transform group-hover:scale-105">
             <BrandLogoDisplay
               customLogoUrl={customLogoUrl}
               logoIcon={logoIcon}
@@ -251,7 +258,7 @@ export default function App() {
           </div>
           <span 
             className={clsx(
-              "font-bold tracking-tight font-display text-xl mt-0.5 select-none transition-colors",
+              "font-bold tracking-tight font-display text-lg sm:text-xl mt-0.5 select-none transition-colors",
               themeMode === 'light' && "text-slate-900 group-hover:text-emerald-700",
               themeMode === 'contrast' && "text-white group-hover:text-zinc-200",
               themeMode === 'cyber' && "text-white group-hover:text-emerald-300"
@@ -265,11 +272,14 @@ export default function App() {
           </span>
         </div>
 
-        {/* Right Header Toolbar: Theme Switcher & Brand Trigger */}
-        <div className="flex items-center gap-2">
+        {/* Center/Right Toolbar: Portfolio Cloud Sync & Theme Switcher */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Cloud Account & Portfolio Manager Bar */}
+          <PortfolioCloudBar onOpenShareModal={() => setIsShareModalOpen(true)} />
+
           {/* Quick Theme Switcher */}
           <div className={clsx(
-            "hidden sm:flex items-center rounded-lg p-1 border",
+            "hidden lg:flex items-center rounded-lg p-1 border",
             themeMode === 'light' ? "bg-slate-100 border-slate-300" : "bg-black/60 border-zinc-800"
           )}>
             <button
@@ -283,7 +293,7 @@ export default function App() {
               )}
             >
               <Icons.Sun className="w-3.5 h-3.5 text-amber-500" />
-              <span>Sáng Báo Cáo</span>
+              <span>Sáng</span>
             </button>
             <button
               onClick={() => setThemeMode('contrast')}
@@ -296,7 +306,7 @@ export default function App() {
               )}
             >
               <Icons.Moon className="w-3.5 h-3.5 text-blue-400" />
-              <span>Tối Tương Phản</span>
+              <span>Tối</span>
             </button>
             <button
               onClick={() => setThemeMode('cyber')}
@@ -309,7 +319,7 @@ export default function App() {
               )}
             >
               <Icons.Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Cyber Neon</span>
+              <span>Cyber</span>
             </button>
           </div>
 
@@ -317,10 +327,10 @@ export default function App() {
           <button
             onClick={() => setIsBrandModalOpen(true)}
             className={clsx(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold cursor-pointer uppercase tracking-wider transition-all",
+              "hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold cursor-pointer uppercase tracking-wider transition-all",
               themeMode === 'light' 
                 ? "bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300"
-                : "text-emerald-400 border border-emerald-900/35 hover:border-emerald-500/50 bg-black/40 hover:bg-emerald-950/25 shadow-[0_0_12px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] animate-pulse-subtle"
+                : "text-emerald-400 border border-emerald-900/35 hover:border-emerald-500/50 bg-black/40 hover:bg-emerald-950/25 shadow-[0_0_12px_rgba(16,185,129,0.05)] hover:shadow-[0_0_15px_rgba(16,185,129,0.2)]"
             )}
           >
             <Icons.Palette className={clsx("w-3.5 h-3.5", themeMode === 'light' ? "text-slate-700" : "text-emerald-400")} />
@@ -334,6 +344,12 @@ export default function App() {
           <PortfolioTable />
         </div>
       </main>
+
+      {/* Share Modal */}
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+      />
 
       {/* Personalization settings Modal Panel */}
       <BrandSettingsModal 

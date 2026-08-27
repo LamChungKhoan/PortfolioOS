@@ -5,9 +5,16 @@ import {
   setDoc, 
   getDoc, 
   onSnapshot, 
-  serverTimestamp 
+  serverTimestamp,
+  updateDoc
 } from 'firebase/firestore';
 import { PortfolioPosition, BrandSettings } from '../store/useStore';
+
+export interface UserSavedRoom {
+  id: string;
+  title: string;
+  updatedAt?: any;
+}
 
 export interface CloudPortfolioData {
   id: string;
@@ -26,8 +33,18 @@ export interface CloudPortfolioData {
   createdAt?: any;
 }
 
+export interface UserCloudProfile {
+  uid: string;
+  email: string;
+  displayName?: string;
+  lastActiveRoom: string;
+  portfolioRooms: UserSavedRoom[];
+  activePortfolio: CloudPortfolioData;
+  updatedAt?: any;
+}
+
 /**
- * Clean slug string safely without throwing if non-string (like Click Event) is passed
+ * Clean slug string safely without throwing if non-string is passed
  */
 export function cleanRoomSlug(slug: any): string {
   if (typeof slug !== 'string' || !slug) {
@@ -69,8 +86,7 @@ export function sanitizeForFirestore<T>(data: T): T {
 }
 
 /**
- * Creates or updates a broker's portfolio on Firestore Cloud
- * @param roomSlug Custom friendly slug or random ID (e.g. 'vinhquang' or 'vq-8899')
+ * Saves a portfolio under the user's account and to the public room collection
  */
 export async function savePortfolioToCloud(
   roomSlug: any,
@@ -78,11 +94,9 @@ export async function savePortfolioToCloud(
 ): Promise<{ success: boolean; id: string; error?: string }> {
   try {
     const cleanId = cleanRoomSlug(roomSlug);
-    const docRef = doc(db, 'portfolios', cleanId);
-
     const currentUser = auth.currentUser;
 
-    const rawData = {
+    const fullPortfolio: CloudPortfolioData = {
       ...portfolioData,
       id: cleanId,
       brokerUid: currentUser?.uid || 'guest_broker',
@@ -92,10 +106,49 @@ export async function savePortfolioToCloud(
       updatedAt: serverTimestamp(),
     };
 
-    // Strip all undefined properties
-    const cleanData = sanitizeForFirestore(rawData);
+    const cleanData = sanitizeForFirestore(fullPortfolio);
 
-    await setDoc(docRef, cleanData, { merge: true });
+    // 1. Save to public rooms collection
+    const publicDocRef = doc(db, 'portfolios', cleanId);
+    await setDoc(publicDocRef, cleanData, { merge: true });
+
+    // 2. If logged in with Google, also save under user document and update their portfolio rooms list
+    if (currentUser?.uid) {
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      const userSnap = await getDoc(userDocRef);
+      
+      let rooms: UserSavedRoom[] = [];
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        rooms = Array.isArray(userData.portfolioRooms) ? userData.portfolioRooms : [];
+      }
+
+      // Upsert current room in user's room list
+      const existingIdx = rooms.findIndex(r => r.id === cleanId);
+      const roomEntry: UserSavedRoom = {
+        id: cleanId,
+        title: portfolioData.title || cleanId,
+        updatedAt: new Date().toISOString()
+      };
+
+      if (existingIdx >= 0) {
+        rooms[existingIdx] = roomEntry;
+      } else {
+        rooms.unshift(roomEntry);
+      }
+
+      const userProfileData = sanitizeForFirestore({
+        uid: currentUser.uid,
+        email: currentUser.email || '',
+        displayName: currentUser.displayName || '',
+        lastActiveRoom: cleanId,
+        portfolioRooms: rooms,
+        activePortfolio: cleanData,
+        updatedAt: serverTimestamp()
+      });
+
+      await setDoc(userDocRef, userProfileData, { merge: true });
+    }
 
     return { success: true, id: cleanId };
   } catch (err: any) {
@@ -123,7 +176,45 @@ export async function fetchPortfolioFromCloud(portfolioId: any): Promise<CloudPo
 }
 
 /**
- * Subscribes to real-time updates of a portfolio (for Clients watching live)
+ * Fetches user profile data from Firestore
+ */
+export async function fetchUserProfile(uid: string): Promise<UserCloudProfile | null> {
+  try {
+    const docRef = doc(db, 'users', uid);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data() as UserCloudProfile;
+    }
+    return null;
+  } catch (err) {
+    console.error('Error fetching user profile:', err);
+    return null;
+  }
+}
+
+/**
+ * Subscribes to real-time updates for a logged-in user profile across all tabs/devices
+ */
+export function subscribeToUserCloud(
+  uid: string,
+  onUpdate: (profile: UserCloudProfile | null) => void,
+  onError?: (err: any) => void
+) {
+  const docRef = doc(db, 'users', uid);
+  return onSnapshot(docRef, (docSnap) => {
+    if (docSnap.exists()) {
+      onUpdate(docSnap.data() as UserCloudProfile);
+    } else {
+      onUpdate(null);
+    }
+  }, (err) => {
+    console.error('User snapshot error:', err);
+    if (onError) onError(err);
+  });
+}
+
+/**
+ * Subscribes to real-time updates of a public portfolio (for Clients or Rooms watching live)
  */
 export function subscribeToCloudPortfolio(
   portfolioId: any,
