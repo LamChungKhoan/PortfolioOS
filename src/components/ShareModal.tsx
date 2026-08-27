@@ -54,6 +54,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [copiedZaloMsg, setCopiedZaloMsg] = useState(false);
   const [copiedDomain, setCopiedDomain] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedShort, setCopiedShort] = useState(false);
@@ -87,6 +88,23 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
 
   const currentSlug = cleanRoomSlug(customSlug || activeRoomId || 'portfolio');
   const liveShareUrl = `${window.location.origin}${window.location.pathname}?room=${currentSlug}`;
+
+  // Formatted message ready to send directly to clients on Zalo
+  const formattedZaloMessage = `📊 ${boardTitle.toUpperCase()}
+👉 Xem chi tiết danh mục trực tiếp tại:
+${liveShareUrl}
+${brokerNotes.trim() ? `\n💬 Ghi chú từ Môi Giới: ${brokerNotes.trim()}` : ''}`;
+
+  const handleCopyZaloMessage = async () => {
+    try {
+      await handlePublishToCloud();
+      await navigator.clipboard.writeText(formattedZaloMessage);
+      setCopiedZaloMsg(true);
+      setTimeout(() => setCopiedZaloMsg(false), 2500);
+    } catch (e) {
+      console.error('Failed to copy Zalo message', e);
+    }
+  };
 
   // Clean alias for custom branded link
   const sanitizeAlias = (alias: string) => {
@@ -480,13 +498,18 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
               />
             </div>
 
-            {/* Short Link Generator Box */}
-            <div className="p-4 rounded-xl bg-gradient-to-b from-emerald-950/30 to-black/60 border border-emerald-500/40 space-y-3 shadow-lg">
+            {/* Primary Recommended: Direct Vercel / Domain Link (100% Zalo Safe) */}
+            <div className="p-4 rounded-xl bg-gradient-to-b from-emerald-950/40 via-zinc-950/80 to-black border-2 border-emerald-500/70 space-y-3 shadow-[0_0_20px_rgba(16,185,129,0.15)]">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Scissors className="w-3.5 h-3.5 text-emerald-400" />
-                  Link Rút Gọn Thương Hiệu Riêng (Độ Tin Cậy Cao):
-                </label>
+                <div className="flex items-center gap-1.5">
+                  <span className="flex h-2 w-2 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <label className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                    Link Trực Tiếp Chuẩn Gửi Zalo (100% Mở Được - Không Bị Chặn):
+                  </label>
+                </div>
                 <button
                   type="button"
                   onClick={() => setShowQr(!showQr)}
@@ -497,62 +520,44 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
                 </button>
               </div>
 
-              {/* Alias input customizer */}
-              <div className="space-y-1.5">
-                <div className="text-[11px] text-zinc-400 flex items-center justify-between">
-                  <span>Ký hiệu thương hiệu hiển thị trên link rút gọn:</span>
-                  <span className="text-emerald-400 font-mono font-bold">tinyurl.com/{sanitizeAlias(customAlias || currentSlug)}</span>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-black border border-emerald-500/60 rounded-lg px-3 py-2 text-xs text-emerald-300 font-mono font-bold overflow-x-auto whitespace-nowrap shadow-inner select-all">
+                  {liveShareUrl}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-zinc-500 bg-zinc-900 px-2.5 py-1.5 rounded-lg border border-zinc-800 shrink-0">
-                    tinyurl.com/
-                  </span>
-                  <input
-                    type="text"
-                    value={customAlias}
-                    onChange={(e) => {
-                      setCustomAlias(e.target.value);
-                      setShortUrl('');
-                    }}
-                    placeholder={currentSlug}
-                    className="flex-1 text-xs rounded-lg bg-black/80 border border-zinc-800 focus:border-emerald-500 focus:outline-none px-2.5 py-1.5 text-emerald-300 font-mono font-bold"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={() => handleGenerateShortLink(liveShareUrl, customAlias)}
-                    disabled={isGeneratingShort || isSavingCloud}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 shrink-0 flex items-center gap-1 shadow"
-                  >
-                    {isGeneratingShort ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                    )}
-                    {shortUrl ? 'TẠO LẠI LINK' : 'TẠO LINK THƯƠNG HIỆU'}
-                  </Button>
-                </div>
+                <Button
+                  onClick={() => handleCopyLink(liveShareUrl, false)}
+                  disabled={isSavingCloud}
+                  className={clsx(
+                    "shrink-0 font-bold transition-all px-3 py-2 text-xs flex items-center gap-1.5 shadow",
+                    copied 
+                      ? "bg-emerald-500 text-black font-extrabold shadow-[0_0_12px_rgba(16,185,129,0.5)]" 
+                      : "bg-emerald-600 hover:bg-emerald-500 text-white"
+                  )}
+                >
+                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? 'ĐÃ CHÉP LINK!' : 'CHÉP LINK'}
+                </Button>
               </div>
 
-              {/* Display Result Link */}
-              {shortUrl && (
-                <div className="pt-2 border-t border-emerald-950/60 flex items-center gap-2">
-                  <div className="flex-1 bg-black border border-emerald-500/70 rounded-lg px-3 py-2 text-xs text-emerald-300 font-mono font-bold overflow-x-auto whitespace-nowrap shadow-inner select-all">
-                    {shortUrl}
-                  </div>
-                  <Button
-                    onClick={() => handleCopyLink(shortUrl, true)}
-                    className={clsx(
-                      "shrink-0 font-bold transition-all px-4 py-2 text-xs flex items-center gap-1.5 shadow-md",
-                      copiedShort
-                        ? "bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.5)]" 
-                        : "bg-emerald-600 hover:bg-emerald-500 text-white"
-                    )}
-                  >
-                    {copiedShort ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    {copiedShort ? 'ĐÃ CHÉP LINK!' : 'CHÉP LINK NGẮN'}
-                  </Button>
+              {/* One-click format message for Zalo */}
+              <div className="pt-2 border-t border-emerald-900/40 flex flex-col sm:flex-row items-center justify-between gap-2">
+                <div className="text-[11px] text-zinc-300">
+                  💡 Gửi tin nhắn định dạng đẹp kèm lời nhắn vào nhóm chat Zalo:
                 </div>
-              )}
+                <Button
+                  size="sm"
+                  onClick={handleCopyZaloMessage}
+                  className={clsx(
+                    "w-full sm:w-auto text-xs font-bold px-3 py-1.5 transition-all flex items-center justify-center gap-1.5",
+                    copiedZaloMsg 
+                      ? "bg-emerald-400 text-black shadow-[0_0_15px_rgba(16,185,129,0.6)]" 
+                      : "bg-zinc-800 hover:bg-zinc-700 text-emerald-300 border border-emerald-500/40"
+                  )}
+                >
+                  {copiedZaloMsg ? <Check className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5 text-amber-400" />}
+                  {copiedZaloMsg ? 'ĐÃ CHÉP TIN NHẮN ZALO!' : 'CHÉP TIN NHẮN GỬI ZALO'}
+                </Button>
+              </div>
 
               {/* QR Code Viewer */}
               {showQr && (
@@ -571,10 +576,10 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
                   </div>
                   <div className="space-y-1.5">
                     <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center justify-center sm:justify-start gap-1">
-                      <QrCode className="w-4 h-4 text-emerald-400" /> Mã QR Khách Quét Vào Ngay
+                      <QrCode className="w-4 h-4 text-emerald-400" /> Khách Quét Camera Zalo Xem Ngay
                     </div>
-                    <p className="text-[11px] text-zinc-400 leading-relaxed">
-                      Khách hàng chỉ cần mở Zalo hoặc Camera điện thoại quét mã này là lập tức truy cập thẳng vào danh mục trực quan.
+                    <p className="text-[11px] text-zinc-300 leading-relaxed">
+                      Gửi ảnh QR này qua Zalo hoặc khách dùng Camera điện thoại quét là mở thẳng danh mục tức thì, an toàn 100%.
                     </p>
                     <a 
                       href={qrImageUrl} 
@@ -590,31 +595,78 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
               )}
             </div>
 
-            {/* Live URL Box (Original Link) */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Link2 className="w-3.5 h-3.5" />
-                Đường Link Vercel Trực Tiếp (Direct URL):
-              </label>
-              
+            {/* Zalo / URL Shortener Warning & Explanation */}
+            <div className="p-3 rounded-xl bg-amber-950/25 border border-amber-500/30 text-amber-200/90 text-xs space-y-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Lưu ý khi gửi qua Zalo & Messenger:</span>
+              </div>
+              <p className="text-[11px] text-zinc-300 leading-relaxed">
+                Zalo và Facebook tự động khóa các link rút gọn miễn phí như <code>tinyurl.com</code> hay <code>bit.ly</code> để chống spam. 
+                Vì vậy, <strong>hãy gửi trực tiếp Link Gốc Vercel màu xanh ở trên</strong> hoặc <strong>Mã QR</strong> để khách hàng mở mượt mà 100% không bao giờ gặp ổ khóa đỏ.
+              </p>
+            </div>
+
+            {/* Optional Short Link Generator Box (For SMS / Email / Telegram) */}
+            <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Scissors className="w-3.5 h-3.5 text-zinc-400" />
+                  Link Rút Gọn TinyURL (Dành cho SMS / Telegram):
+                </label>
+                <span className="text-[10px] text-amber-400/80 font-mono">Không nên gửi Zalo</span>
+              </div>
+
+              {/* Alias input customizer */}
               <div className="flex items-center gap-2">
-                <div className="flex-1 bg-black/80 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-400 font-mono overflow-x-auto whitespace-nowrap shadow-inner select-all">
-                  {liveShareUrl}
-                </div>
+                <span className="text-xs font-mono text-zinc-500 bg-zinc-900 px-2.5 py-1.5 rounded-lg border border-zinc-800 shrink-0">
+                  tinyurl.com/
+                </span>
+                <input
+                  type="text"
+                  value={customAlias}
+                  onChange={(e) => {
+                    setCustomAlias(e.target.value);
+                    setShortUrl('');
+                  }}
+                  placeholder={currentSlug}
+                  className="flex-1 text-xs rounded-lg bg-black/80 border border-zinc-800 focus:border-emerald-500 focus:outline-none px-2.5 py-1.5 text-zinc-200 font-mono"
+                />
                 <Button
-                  onClick={() => handleCopyLink(liveShareUrl, false)}
-                  disabled={isSavingCloud}
-                  className={clsx(
-                    "shrink-0 font-bold transition-all px-3 py-2 text-xs flex items-center gap-1.5",
-                    copied 
-                      ? "bg-zinc-700 text-emerald-400" 
-                      : "bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
-                  )}
+                  size="sm"
+                  onClick={() => handleGenerateShortLink(liveShareUrl, customAlias)}
+                  disabled={isGeneratingShort || isSavingCloud}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold px-3 py-1.5 shrink-0 flex items-center gap-1 border border-zinc-700"
                 >
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  {copied ? 'ĐÃ CHÉP' : 'CHÉP'}
+                  {isGeneratingShort ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5 text-zinc-400" />
+                  )}
+                  {shortUrl ? 'Tạo lại' : 'Tạo link'}
                 </Button>
               </div>
+
+              {/* Display Result Link */}
+              {shortUrl && (
+                <div className="pt-2 border-t border-zinc-800 flex items-center gap-2">
+                  <div className="flex-1 bg-black border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-400 font-mono overflow-x-auto whitespace-nowrap">
+                    {shortUrl}
+                  </div>
+                  <Button
+                    onClick={() => handleCopyLink(shortUrl, true)}
+                    className={clsx(
+                      "shrink-0 font-bold transition-all px-3 py-1.5 text-xs flex items-center gap-1",
+                      copiedShort
+                        ? "bg-zinc-700 text-emerald-400" 
+                        : "bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
+                    )}
+                  >
+                    {copiedShort ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedShort ? 'Đã chép' : 'Chép'}
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Custom Domain Guide Toggle */}
